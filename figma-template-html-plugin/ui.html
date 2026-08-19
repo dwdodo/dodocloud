@@ -70,8 +70,10 @@
       Figma에서 <b>Title / Body / (반복 가능한) 카드 그룹 / 이미지 자리</b>를 포함한 프레임을 선택한 뒤,
       아래 HTML 틀을 채우고 "Figma에서 변환하기"를 누르세요.<br />
       · 레이어 이름에 <code>title</code>/<code>body</code>(<code>content</code>)/<code>image</code>가 포함되면 자동 인식됩니다.<br />
-      · 레이어 이름에 <code>items</code>/<code>list</code>/<code>반복</code>이 포함된 그룹은 "반복 그룹"으로 인식되고,
-      그 안의 자식 레이어 개수만큼(마케팅팀이 복제/삭제한 그대로) HTML도 반복 생성됩니다.<br />
+      · <code>Items</code>, <code>List</code> 같은 그룹 레이어는 "반복 그룹"으로 인식되고 그 안의 자식 레이어
+      개수만큼(마케팅팀이 복제/삭제한 그대로) HTML도 반복 생성됩니다. 템플릿 하나에 <b>여러 개의 반복 그룹</b>이
+      있다면 <code>Repeat: Benefits</code>, <code>Repeat: Steps</code>처럼 이름을 지어 구분하세요
+      (HTML 쪽은 <code>data-figma-repeat="benefits"</code>).<br />
       · 이미지는 실제 파일로 변환되지 않고 <b>"이미지 자리입니다" 자리표시(placeholder)</b>만 채워집니다.
       완성된 HTML을 다른 에디터(예: 카페24)에 붙여넣은 뒤 그 자리에 이미지를 직접 넣으세요.
     </p>
@@ -105,6 +107,9 @@
     '  .item { flex: 1; }',
     '  .item h3 { font-size: 15px; margin: 8px 0 4px; }',
     '  .item p { font-size: 13px; color: #555; margin: 0; }',
+    '  .steps { margin-top: 16px; padding-left: 20px; }',
+    '  .steps h4 { font-size: 14px; margin: 0 0 2px; }',
+    '  .steps p { font-size: 13px; color: #555; margin: 0 0 10px; }',
     '</style>',
     '</head>',
     '<body>',
@@ -113,14 +118,22 @@
     '    <h1 data-figma-slot="title"></h1>',
     '    <div class="body" data-figma-slot="body"></div>',
     '',
-    '    <!-- 반복 그룹: Figma에서 이 그룹 안의 카드를 복제/삭제하면 개수가 그대로 반영됩니다 -->',
-    '    <div class="items" data-figma-repeat="items">',
+    '    <!-- 반복 그룹 1: Figma 레이어 이름 "Repeat: Benefits" 와 매칭 -->',
+    '    <div class="items" data-figma-repeat="benefits">',
     '      <div class="item">',
     '        <img class="item-image" data-figma-slot="image" src="" alt="" />',
     '        <h3 data-figma-slot="title"></h3>',
     '        <p data-figma-slot="body"></p>',
     '      </div>',
     '    </div>',
+    '',
+    '    <!-- 반복 그룹 2: Figma 레이어 이름 "Repeat: Steps" 와 매칭 -->',
+    '    <ol class="steps" data-figma-repeat="steps">',
+    '      <li>',
+    '        <h4 data-figma-slot="title"></h4>',
+    '        <p data-figma-slot="body"></p>',
+    '      </li>',
+    '    </ol>',
     '  </div>',
     '</body>',
     '</html>'
@@ -221,16 +234,31 @@
     var imageEl = firstTopLevelMatch(doc, '[data-figma-slot="image"]');
     if (imageEl && data.image && data.image.present) fillImageSlot(imageEl, data.image);
 
-    var repeatEl = doc.querySelector('[data-figma-repeat]');
-    if (repeatEl && data.items && data.items.length > 0 && repeatEl.firstElementChild) {
+    var repeatEls = doc.querySelectorAll('[data-figma-repeat]');
+    var repeatKeys = data.repeats ? Object.keys(data.repeats) : [];
+    // Positional fallback only applies when every repeat slot in the HTML
+    // can be paired 1:1, in order, with a repeat group found in Figma —
+    // lets `data-figma-repeat` (no value) keep working for a single group,
+    // and even for several groups as long as the counts match up.
+    var usePositionalFallback = repeatEls.length === repeatKeys.length;
+
+    repeatEls.forEach(function (repeatEl, idx) {
+      var attr = (repeatEl.getAttribute('data-figma-repeat') || '').trim().toLowerCase();
+      var key = attr || (usePositionalFallback ? repeatKeys[idx] : '');
+      var items = data.repeats ? data.repeats[key] : undefined;
+
+      // No matching Figma group for this slot: leave the authored markup
+      // untouched rather than guessing.
+      if (!items || !repeatEl.firstElementChild) return;
+
       var itemTemplate = repeatEl.firstElementChild.cloneNode(true);
       repeatEl.innerHTML = '';
-      data.items.forEach(function (item) {
+      items.forEach(function (item) {
         var clone = itemTemplate.cloneNode(true);
         fillSlotsWithin(clone, item);
         repeatEl.appendChild(clone);
       });
-    }
+    });
 
     return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
   }
@@ -266,13 +294,16 @@
 
       var badges = document.createElement('div');
       badges.className = 'badges';
+      var repeatBadges = data.foundRepeat
+        ? data.repeatKeys
+            .map(function (k) {
+              var count = data.repeats[k] ? data.repeats[k].length : 0;
+              return '<span class="badge ok">' + escapeHtml(k) + ' ' + count + '개</span>';
+            })
+            .join('')
+        : '<span class="badge miss">반복 그룹 없음</span>';
       badges.innerHTML =
-        badge('Title', data.foundTitle) +
-        badge('Body', data.foundBody) +
-        badge('Image', data.foundImage) +
-        (data.foundRepeat
-          ? '<span class="badge ok">반복 그룹 ' + (data.items ? data.items.length : 0) + '개</span>'
-          : '<span class="badge miss">반복 그룹 없음</span>');
+        badge('Title', data.foundTitle) + badge('Body', data.foundBody) + badge('Image', data.foundImage) + repeatBadges;
       card.appendChild(badges);
 
       var out = document.createElement('textarea');
