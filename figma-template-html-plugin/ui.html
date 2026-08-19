@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<style>
+  :root {
+    color-scheme: light dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+    font-size: 12px;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; height: 100vh; }
+  h2 { font-size: 13px; margin: 0 0 2px; }
+  p.hint { margin: 0; color: #666; line-height: 1.5; }
+  code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; }
+  textarea {
+    width: 100%;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    resize: vertical;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 8px;
+  }
+  #template-input { height: 130px; }
+  .row { display: flex; gap: 8px; }
+  button {
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  button.primary { background: #18a0fb; color: #fff; flex: 1; }
+  button.primary:hover { background: #0d8ee0; }
+  button.secondary { background: #f0f0f0; color: #333; }
+  button.secondary:hover { background: #e4e4e4; }
+  #results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .card {
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .card h3 { font-size: 12px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; }
+  .badges { display: flex; gap: 4px; margin-bottom: 6px; }
+  .badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: #eee;
+    color: #666;
+  }
+  .badge.ok { background: #e3f6e6; color: #1a7f3c; }
+  .badge.miss { background: #fdeaea; color: #c53030; }
+  .output { height: 90px; }
+  .error { color: #c53030; }
+  .empty { color: #999; text-align: center; padding: 24px 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h2>Template → HTML</h2>
+    <p class="hint">
+      Figma에서 <b>Title / Body / Image</b> 역할을 하는 레이어가 포함된 프레임을 선택한 뒤,
+      아래 HTML 틀을 채워 넣거나 기본 예시를 사용하고 "Figma에서 변환하기"를 누르세요.<br />
+      레이어 이름에 <code>title</code>, <code>body</code>(또는 <code>content</code>),
+      <code>image</code> 등의 단어가 포함되어야 인식됩니다.<br />
+      HTML 틀에는 <code>data-figma-slot="title"</code> / <code>"body"</code> / <code>"image"</code>
+      속성을 가진 요소가 있어야 합니다.
+    </p>
+  </div>
+
+  <textarea id="template-input" spellcheck="false"></textarea>
+
+  <div class="row">
+    <button class="primary" id="convert-btn">Figma에서 변환하기</button>
+    <button class="secondary" id="reset-btn">예시로 초기화</button>
+  </div>
+
+  <div id="results">
+    <div class="empty" id="empty-msg">아직 변환 결과가 없습니다.</div>
+  </div>
+</div>
+
+<script>
+  var DEFAULT_TEMPLATE = [
+    '<!DOCTYPE html>',
+    '<html lang="ko">',
+    '<head>',
+    '<meta charset="UTF-8" />',
+    '<title>Template</title>',
+    '<style>',
+    '  .card { max-width: 480px; font-family: sans-serif; }',
+    '  .card img { width: 100%; height: auto; display: block; border-radius: 8px; }',
+    '  .card h1 { font-size: 22px; margin: 16px 0 8px; }',
+    '  .card .body { font-size: 14px; line-height: 1.6; color: #333; }',
+    '</style>',
+    '</head>',
+    '<body>',
+    '  <div class="card">',
+    '    <img data-figma-slot="image" src="" alt="" />',
+    '    <h1 data-figma-slot="title"></h1>',
+    '    <div class="body" data-figma-slot="body"></div>',
+    '  </div>',
+    '</body>',
+    '</html>'
+  ].join('\n');
+
+  var templateInput = document.getElementById('template-input');
+  var resultsEl = document.getElementById('results');
+  var emptyMsg = document.getElementById('empty-msg');
+
+  templateInput.value = DEFAULT_TEMPLATE;
+
+  document.getElementById('reset-btn').addEventListener('click', function () {
+    templateInput.value = DEFAULT_TEMPLATE;
+  });
+
+  document.getElementById('convert-btn').addEventListener('click', function () {
+    parent.postMessage({ pluginMessage: { type: 'convert' } }, '*');
+  });
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function applyTemplate(templateHtml, data) {
+    var doc = new DOMParser().parseFromString(templateHtml, 'text/html');
+
+    var titleEl = doc.querySelector('[data-figma-slot="title"]');
+    if (titleEl) titleEl.textContent = data.title || '';
+
+    var bodyEl = doc.querySelector('[data-figma-slot="body"]');
+    if (bodyEl) bodyEl.innerHTML = escapeHtml(data.body || '').split('\n').join('<br>');
+
+    var imageEl = doc.querySelector('[data-figma-slot="image"]');
+    if (imageEl && data.image) {
+      if (imageEl.tagName === 'IMG') {
+        imageEl.setAttribute('src', data.image);
+        if (data.imageWidth) imageEl.setAttribute('width', data.imageWidth);
+        if (data.imageHeight) imageEl.setAttribute('height', data.imageHeight);
+      } else {
+        imageEl.setAttribute(
+          'style',
+          (imageEl.getAttribute('style') || '') +
+            ';background-image:url(' + data.image + ');background-size:cover;background-position:center;'
+        );
+      }
+    }
+
+    return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+  }
+
+  function badge(label, ok) {
+    return '<span class="badge ' + (ok ? 'ok' : 'miss') + '">' + label + (ok ? ' 인식됨' : ' 없음') + '</span>';
+  }
+
+  function renderResults(results) {
+    resultsEl.innerHTML = '';
+    if (!results || results.length === 0) {
+      resultsEl.appendChild(emptyMsg);
+      return;
+    }
+
+    results.forEach(function (data, idx) {
+      var card = document.createElement('div');
+      card.className = 'card';
+
+      if (data.error) {
+        card.innerHTML =
+          '<h3>' + escapeHtml(data.name || ('레이어 ' + (idx + 1))) + '</h3>' +
+          '<p class="error">변환 실패: ' + escapeHtml(data.error) + '</p>';
+        resultsEl.appendChild(card);
+        return;
+      }
+
+      var outputHtml = applyTemplate(templateInput.value, data);
+
+      var header = document.createElement('h3');
+      header.textContent = data.name || ('레이어 ' + (idx + 1));
+      card.appendChild(header);
+
+      var badges = document.createElement('div');
+      badges.className = 'badges';
+      badges.innerHTML =
+        badge('Title', data.foundTitle) + badge('Body', data.foundBody) + badge('Image', data.foundImage);
+      card.appendChild(badges);
+
+      var out = document.createElement('textarea');
+      out.className = 'output';
+      out.readOnly = true;
+      out.value = outputHtml;
+      card.appendChild(out);
+
+      var row = document.createElement('div');
+      row.className = 'row';
+
+      var copyBtn = document.createElement('button');
+      copyBtn.className = 'secondary';
+      copyBtn.textContent = '복사';
+      copyBtn.addEventListener('click', function () {
+        navigator.clipboard.writeText(outputHtml).then(function () {
+          copyBtn.textContent = '복사됨!';
+          setTimeout(function () { copyBtn.textContent = '복사'; }, 1200);
+        });
+      });
+      row.appendChild(copyBtn);
+
+      var downloadBtn = document.createElement('button');
+      downloadBtn.className = 'secondary';
+      downloadBtn.textContent = '다운로드 (.html)';
+      downloadBtn.addEventListener('click', function () {
+        var blob = new Blob([outputHtml], { type: 'text/html' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (data.name || 'template').replace(/[^\w\-가-힣]+/g, '_') + '.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+      row.appendChild(downloadBtn);
+
+      card.appendChild(row);
+      resultsEl.appendChild(card);
+    });
+  }
+
+  window.onmessage = function (event) {
+    var msg = event.data.pluginMessage;
+    if (!msg) return;
+
+    if (msg.type === 'result') {
+      renderResults(msg.results);
+    } else if (msg.type === 'error') {
+      resultsEl.innerHTML = '<p class="error">' + escapeHtml(msg.message) + '</p>';
+    }
+  };
+</script>
+</body>
+</html>
