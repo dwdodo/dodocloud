@@ -27,7 +27,7 @@
     border-radius: 6px;
     padding: 8px;
   }
-  #template-input { height: 130px; }
+  #template-input { height: 150px; }
   .row { display: flex; gap: 8px; }
   button {
     border: none;
@@ -47,7 +47,7 @@
     padding: 8px;
   }
   .card h3 { font-size: 12px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; }
-  .badges { display: flex; gap: 4px; margin-bottom: 6px; }
+  .badges { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
   .badge {
     font-size: 10px;
     padding: 2px 6px;
@@ -67,12 +67,13 @@
   <div>
     <h2>Template → HTML</h2>
     <p class="hint">
-      Figma에서 <b>Title / Body / Image</b> 역할을 하는 레이어가 포함된 프레임을 선택한 뒤,
-      아래 HTML 틀을 채워 넣거나 기본 예시를 사용하고 "Figma에서 변환하기"를 누르세요.<br />
-      레이어 이름에 <code>title</code>, <code>body</code>(또는 <code>content</code>),
-      <code>image</code> 등의 단어가 포함되어야 인식됩니다.<br />
-      HTML 틀에는 <code>data-figma-slot="title"</code> / <code>"body"</code> / <code>"image"</code>
-      속성을 가진 요소가 있어야 합니다.
+      Figma에서 <b>Title / Body / (반복 가능한) 카드 그룹 / 이미지 자리</b>를 포함한 프레임을 선택한 뒤,
+      아래 HTML 틀을 채우고 "Figma에서 변환하기"를 누르세요.<br />
+      · 레이어 이름에 <code>title</code>/<code>body</code>(<code>content</code>)/<code>image</code>가 포함되면 자동 인식됩니다.<br />
+      · 레이어 이름에 <code>items</code>/<code>list</code>/<code>반복</code>이 포함된 그룹은 "반복 그룹"으로 인식되고,
+      그 안의 자식 레이어 개수만큼(마케팅팀이 복제/삭제한 그대로) HTML도 반복 생성됩니다.<br />
+      · 이미지는 실제 파일로 변환되지 않고 <b>"이미지 자리입니다" 자리표시(placeholder)</b>만 채워집니다.
+      완성된 HTML을 다른 에디터(예: 카페24)에 붙여넣은 뒤 그 자리에 이미지를 직접 넣으세요.
     </p>
   </div>
 
@@ -100,6 +101,10 @@
     '  .card img { width: 100%; height: auto; display: block; border-radius: 8px; }',
     '  .card h1 { font-size: 22px; margin: 16px 0 8px; }',
     '  .card .body { font-size: 14px; line-height: 1.6; color: #333; }',
+    '  .items { display: flex; gap: 12px; margin-top: 20px; }',
+    '  .item { flex: 1; }',
+    '  .item h3 { font-size: 15px; margin: 8px 0 4px; }',
+    '  .item p { font-size: 13px; color: #555; margin: 0; }',
     '</style>',
     '</head>',
     '<body>',
@@ -107,6 +112,15 @@
     '    <img data-figma-slot="image" src="" alt="" />',
     '    <h1 data-figma-slot="title"></h1>',
     '    <div class="body" data-figma-slot="body"></div>',
+    '',
+    '    <!-- 반복 그룹: Figma에서 이 그룹 안의 카드를 복제/삭제하면 개수가 그대로 반영됩니다 -->',
+    '    <div class="items" data-figma-repeat="items">',
+    '      <div class="item">',
+    '        <img class="item-image" data-figma-slot="image" src="" alt="" />',
+    '        <h3 data-figma-slot="title"></h3>',
+    '        <p data-figma-slot="body"></p>',
+    '      </div>',
+    '    </div>',
     '  </div>',
     '</body>',
     '</html>'
@@ -133,28 +147,89 @@
       .replace(/>/g, '&gt;');
   }
 
+  // Builds a labelled gray placeholder image (as an inline SVG data URI) so
+  // the output HTML shows a clearly marked "insert image here" box instead
+  // of a broken <img> or an actual exported picture.
+  function placeholderImageDataUri(width, height) {
+    var w = width > 0 ? width : 400;
+    var h = height > 0 ? height : 300;
+    var titleSize = Math.max(12, Math.round(w / 18));
+    var dimSize = Math.max(10, Math.round(w / 26));
+    var svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">' +
+      '<rect width="100%" height="100%" fill="#d9d9d9"/>' +
+      '<text x="50%" y="46%" dominant-baseline="middle" text-anchor="middle" ' +
+      'font-family="sans-serif" font-size="' + titleSize + '" fill="#666">이미지 자리입니다</text>' +
+      '<text x="50%" y="60%" dominant-baseline="middle" text-anchor="middle" ' +
+      'font-family="sans-serif" font-size="' + dimSize + '" fill="#999">' + w + ' × ' + h + '</text>' +
+      '</svg>';
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+  }
+
+  function fillImageSlot(imageEl, imageData) {
+    if (!imageEl) return;
+    var placeholder = placeholderImageDataUri(imageData.width, imageData.height);
+    if (imageEl.tagName === 'IMG') {
+      imageEl.setAttribute('src', placeholder);
+      imageEl.setAttribute('alt', '이미지 자리입니다');
+      if (imageData.width) imageEl.setAttribute('width', imageData.width);
+      if (imageData.height) imageEl.setAttribute('height', imageData.height);
+    } else {
+      imageEl.textContent = '이미지 자리입니다';
+      imageEl.setAttribute(
+        'style',
+        (imageEl.getAttribute('style') || '') +
+          ';background-image:url(' + placeholder + ');background-size:cover;background-position:center;'
+      );
+    }
+  }
+
+  // Fills title/body/image slots that live within `root` (inclusive of
+  // root itself, so a repeat-item template can be a single slot element
+  // with no wrapper).
+  function fillSlotsWithin(root, data) {
+    var titleEl = root.matches('[data-figma-slot="title"]') ? root : root.querySelector('[data-figma-slot="title"]');
+    if (titleEl) titleEl.textContent = data.title || '';
+
+    var bodyEl = root.matches('[data-figma-slot="body"]') ? root : root.querySelector('[data-figma-slot="body"]');
+    if (bodyEl) bodyEl.innerHTML = escapeHtml(data.body || '').split('\n').join('<br>');
+
+    var imageEl = root.matches('[data-figma-slot="image"]') ? root : root.querySelector('[data-figma-slot="image"]');
+    if (imageEl && data.image && data.image.present) fillImageSlot(imageEl, data.image);
+  }
+
+  // Same as querySelectorAll(selector), but skips elements that live inside
+  // a [data-figma-repeat] container (those belong to the per-item template
+  // and are filled separately, even if they reuse the same slot names).
+  function firstTopLevelMatch(doc, selector) {
+    var candidates = doc.querySelectorAll(selector);
+    for (var i = 0; i < candidates.length; i++) {
+      if (!candidates[i].closest('[data-figma-repeat]')) return candidates[i];
+    }
+    return null;
+  }
+
   function applyTemplate(templateHtml, data) {
     var doc = new DOMParser().parseFromString(templateHtml, 'text/html');
 
-    var titleEl = doc.querySelector('[data-figma-slot="title"]');
+    var titleEl = firstTopLevelMatch(doc, '[data-figma-slot="title"]');
     if (titleEl) titleEl.textContent = data.title || '';
 
-    var bodyEl = doc.querySelector('[data-figma-slot="body"]');
+    var bodyEl = firstTopLevelMatch(doc, '[data-figma-slot="body"]');
     if (bodyEl) bodyEl.innerHTML = escapeHtml(data.body || '').split('\n').join('<br>');
 
-    var imageEl = doc.querySelector('[data-figma-slot="image"]');
-    if (imageEl && data.image) {
-      if (imageEl.tagName === 'IMG') {
-        imageEl.setAttribute('src', data.image);
-        if (data.imageWidth) imageEl.setAttribute('width', data.imageWidth);
-        if (data.imageHeight) imageEl.setAttribute('height', data.imageHeight);
-      } else {
-        imageEl.setAttribute(
-          'style',
-          (imageEl.getAttribute('style') || '') +
-            ';background-image:url(' + data.image + ');background-size:cover;background-position:center;'
-        );
-      }
+    var imageEl = firstTopLevelMatch(doc, '[data-figma-slot="image"]');
+    if (imageEl && data.image && data.image.present) fillImageSlot(imageEl, data.image);
+
+    var repeatEl = doc.querySelector('[data-figma-repeat]');
+    if (repeatEl && data.items && data.items.length > 0 && repeatEl.firstElementChild) {
+      var itemTemplate = repeatEl.firstElementChild.cloneNode(true);
+      repeatEl.innerHTML = '';
+      data.items.forEach(function (item) {
+        var clone = itemTemplate.cloneNode(true);
+        fillSlotsWithin(clone, item);
+        repeatEl.appendChild(clone);
+      });
     }
 
     return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
@@ -192,7 +267,12 @@
       var badges = document.createElement('div');
       badges.className = 'badges';
       badges.innerHTML =
-        badge('Title', data.foundTitle) + badge('Body', data.foundBody) + badge('Image', data.foundImage);
+        badge('Title', data.foundTitle) +
+        badge('Body', data.foundBody) +
+        badge('Image', data.foundImage) +
+        (data.foundRepeat
+          ? '<span class="badge ok">반복 그룹 ' + (data.items ? data.items.length : 0) + '개</span>'
+          : '<span class="badge miss">반복 그룹 없음</span>');
       card.appendChild(badges);
 
       var out = document.createElement('textarea');
