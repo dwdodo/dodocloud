@@ -1,0 +1,66 @@
+<!--
+  예시: 상품 상세페이지 템플릿
+
+  이 파일과 "짝이 맞는" Figma 레이어 이름은 다음과 같습니다.
+
+    프레임(전체 선택 대상)
+    ├─ Title            (텍스트 레이어)   ← 큰 제목
+    ├─ Body              (텍스트 레이어)   ← 설명 문단
+    ├─ Image             (사각형/프레임)   ← 대표 이미지 자리
+    └─ Repeat: 혜택       (프레임/그룹)     ← 혜택 카드 여러 개를 담는 그룹
+        ├─ Benefit 1      (프레임)
+        │   ├─ Image      (사각형)
+        │   ├─ Title      (텍스트)
+        │   └─ Body        (텍스트)
+        ├─ Benefit 2      (Benefit 1과 동일 구조)
+        └─ Benefit 3      (마케팅팀이 필요하면 복제/삭제해서 개수 조정)
+
+  즉 레이어 이름에 "Title"/"Body"/"Image"라는 단어만 들어가면 되고,
+  혜택 카드들을 담는 바깥 그룹의 이름만 "Repeat: 혜택"으로 지으면 됩니다.
+  (콜론 뒤에 붙인 "혜택"이라는 이름이 아래 data-figma-repeat="혜택"과 짝을 이룹니다.)
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>상품 상세페이지</title>
+<style>
+  body { margin: 0; font-family: sans-serif; }
+  .page { max-width: 720px; margin: 0 auto; }
+  .page img { width: 100%; height: auto; display: block; }
+  .page h1 { font-size: 24px; margin: 20px 0 8px; }
+  .page .body { font-size: 15px; line-height: 1.7; color: #333; }
+
+  .benefits { display: flex; gap: 16px; margin-top: 32px; }
+  .benefit { flex: 1; text-align: center; }
+  .benefit img { border-radius: 8px; }
+  .benefit h3 { font-size: 16px; margin: 10px 0 4px; }
+  .benefit p { font-size: 13px; color: #666; margin: 0; }
+</style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- 대표 이미지 : Figma의 "Image" 레이어와 짝 -->
+    <img data-figma-slot="image" src="" alt="" />
+
+    <!-- 제목 : Figma의 "Title" 레이어와 짝 -->
+    <h1 data-figma-slot="title"></h1>
+
+    <!-- 본문 : Figma의 "Body" 레이어와 짝 -->
+    <div class="body" data-figma-slot="body"></div>
+
+    <!-- 혜택 카드 목록 : Figma의 "Repeat: 혜택" 그룹과 짝
+         → 아래 .benefit 카드 1개만 써두면, Figma에 있던 개수(3개, 4개...)만큼
+           자동으로 복제됩니다. -->
+    <div class="benefits" data-figma-repeat="혜택">
+      <div class="benefit">
+        <img data-figma-slot="image" src="" alt="" />
+        <h3 data-figma-slot="title"></h3>
+        <p data-figma-slot="body"></p>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
