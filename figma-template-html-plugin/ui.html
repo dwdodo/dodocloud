@@ -75,8 +75,18 @@
       있다면 <code>Repeat: Benefits</code>, <code>Repeat: Steps</code>처럼 이름을 지어 구분하세요
       (HTML 쪽은 <code>data-figma-repeat="benefits"</code>).<br />
       · 이미지는 실제 파일로 변환되지 않고 <b>"이미지 자리입니다" 자리표시(placeholder)</b>만 채워집니다.
-      완성된 HTML을 다른 에디터(예: 카페24)에 붙여넣은 뒤 그 자리에 이미지를 직접 넣으세요.
+      완성된 HTML을 다른 에디터(예: 카페24)에 붙여넣은 뒤 그 자리에 이미지를 직접 넣으세요.<br />
+      · Title/Body 텍스트 안에서 부분적으로 크기·색을 다르게 준 경우, <b>색상은 Figma 값 그대로</b> 적용되고
+      <b>크기는 아래 목록 중 가장 가까운 값으로</b> 맞춰집니다.
     </p>
+  </div>
+
+  <div>
+    <label for="allowed-sizes" style="display:block; margin-bottom:4px; color:#666;">
+      허용할 폰트 크기(px, 쉼표로 구분 — Figma 크기는 이 중 가장 가까운 값으로 맞춰집니다)
+    </label>
+    <input id="allowed-sizes" type="text" value="14,16,20,24,32,40"
+      style="width:100%; padding:6px 8px; border:1px solid #ddd; border-radius:6px; font-size:11px;" />
   </div>
 
   <textarea id="template-input" spellcheck="false"></textarea>
@@ -153,11 +163,94 @@
     parent.postMessage({ pluginMessage: { type: 'convert' } }, '*');
   });
 
+  var allowedSizesInput = document.getElementById('allowed-sizes');
+
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
+  }
+
+  function parseAllowedSizes(str) {
+    return String(str || '')
+      .split(',')
+      .map(function (s) { return parseFloat(s.trim()); })
+      .filter(function (n) { return !isNaN(n) && n > 0; })
+      .sort(function (a, b) { return a - b; });
+  }
+
+  // Snaps a raw Figma font size to whichever allowed size is numerically
+  // closest, so output text only ever uses sizes the user has approved.
+  function snapFontSize(size, allowedSizes) {
+    if (!allowedSizes || allowedSizes.length === 0) return size;
+    var closest = allowedSizes[0];
+    var minDiff = Math.abs(size - closest);
+    for (var i = 1; i < allowedSizes.length; i++) {
+      var diff = Math.abs(size - allowedSizes[i]);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = allowedSizes[i];
+      }
+    }
+    return closest;
+  }
+
+  // Collects the distinct (font-size + color) combinations used across one
+  // conversion, so they can be emitted once as CSS classes in a single
+  // <style> block instead of repeating inline styles on every <span>.
+  function createStyleCollector() {
+    return { map: {}, order: [] };
+  }
+
+  function classForDeclarations(collector, declarations) {
+    var cssText = declarations.join(';');
+    if (collector.map[cssText]) return collector.map[cssText];
+    var className = 'fx-' + (collector.order.length + 1);
+    collector.map[cssText] = className;
+    collector.order.push({ className: className, css: cssText });
+    return className;
+  }
+
+  function styleBlockFor(collector) {
+    if (collector.order.length === 0) return '';
+    return collector.order
+      .map(function (c) { return '.' + c.className + '{' + c.css + '}'; })
+      .join('\n');
+  }
+
+  // Renders Figma style runs (from getStyledTextSegments) as HTML, wrapping
+  // each run in a <span class="fx-N"> (rather than an inline style) whose
+  // rule carries its (snapped) font-size and real color. Line breaks within
+  // a run are preserved as <br>.
+  function runsToHtml(runs, allowedSizes, collector) {
+    if (!runs || runs.length === 0) return '';
+    return runs
+      .map(function (run) {
+        var declarations = [];
+        if (typeof run.fontSize === 'number') {
+          declarations.push('font-size:' + snapFontSize(run.fontSize, allowedSizes) + 'px');
+        }
+        if (run.color) declarations.push('color:' + run.color);
+
+        var text = escapeHtml(run.text || '').split('\n').join('<br>');
+        if (declarations.length === 0) return text;
+        var className = classForDeclarations(collector, declarations);
+        return '<span class="' + className + '">' + text + '</span>';
+      })
+      .join('');
+  }
+
+  // Fills a title/body slot from style runs when available, falling back
+  // to the plain extracted string (e.g. if getStyledTextSegments failed).
+  // Either way, line breaks are preserved as <br>.
+  function fillTextSlot(el, plainText, runs, allowedSizes, collector) {
+    if (!el) return;
+    if (runs && runs.length > 0) {
+      el.innerHTML = runsToHtml(runs, allowedSizes, collector);
+    } else {
+      el.innerHTML = escapeHtml(plainText || '').split('\n').join('<br>');
+    }
   }
 
   // Builds a labelled gray placeholder image (as an inline SVG data URI) so
@@ -200,12 +293,12 @@
   // Fills title/body/image slots that live within `root` (inclusive of
   // root itself, so a repeat-item template can be a single slot element
   // with no wrapper).
-  function fillSlotsWithin(root, data) {
+  function fillSlotsWithin(root, data, allowedSizes, collector) {
     var titleEl = root.matches('[data-figma-slot="title"]') ? root : root.querySelector('[data-figma-slot="title"]');
-    if (titleEl) titleEl.textContent = data.title || '';
+    fillTextSlot(titleEl, data.title, data.titleRuns, allowedSizes, collector);
 
     var bodyEl = root.matches('[data-figma-slot="body"]') ? root : root.querySelector('[data-figma-slot="body"]');
-    if (bodyEl) bodyEl.innerHTML = escapeHtml(data.body || '').split('\n').join('<br>');
+    fillTextSlot(bodyEl, data.body, data.bodyRuns, allowedSizes, collector);
 
     var imageEl = root.matches('[data-figma-slot="image"]') ? root : root.querySelector('[data-figma-slot="image"]');
     if (imageEl && data.image && data.image.present) fillImageSlot(imageEl, data.image);
@@ -222,14 +315,15 @@
     return null;
   }
 
-  function applyTemplate(templateHtml, data) {
+  function applyTemplate(templateHtml, data, allowedSizes) {
     var doc = new DOMParser().parseFromString(templateHtml, 'text/html');
+    var collector = createStyleCollector();
 
     var titleEl = firstTopLevelMatch(doc, '[data-figma-slot="title"]');
-    if (titleEl) titleEl.textContent = data.title || '';
+    fillTextSlot(titleEl, data.title, data.titleRuns, allowedSizes, collector);
 
     var bodyEl = firstTopLevelMatch(doc, '[data-figma-slot="body"]');
-    if (bodyEl) bodyEl.innerHTML = escapeHtml(data.body || '').split('\n').join('<br>');
+    fillTextSlot(bodyEl, data.body, data.bodyRuns, allowedSizes, collector);
 
     var imageEl = firstTopLevelMatch(doc, '[data-figma-slot="image"]');
     if (imageEl && data.image && data.image.present) fillImageSlot(imageEl, data.image);
@@ -255,10 +349,19 @@
       repeatEl.innerHTML = '';
       items.forEach(function (item) {
         var clone = itemTemplate.cloneNode(true);
-        fillSlotsWithin(clone, item);
+        fillSlotsWithin(clone, item, allowedSizes, collector);
         repeatEl.appendChild(clone);
       });
     });
+
+    // Figma-derived font-size/color rules go in one <style> block at the
+    // very top of <head>, rather than as inline styles on every span.
+    var styleCss = styleBlockFor(collector);
+    if (styleCss && doc.head) {
+      var styleEl = doc.createElement('style');
+      styleEl.textContent = styleCss;
+      doc.head.insertBefore(styleEl, doc.head.firstChild);
+    }
 
     return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
   }
@@ -286,7 +389,8 @@
         return;
       }
 
-      var outputHtml = applyTemplate(templateInput.value, data);
+      var allowedSizes = parseAllowedSizes(allowedSizesInput.value);
+      var outputHtml = applyTemplate(templateInput.value, data, allowedSizes);
 
       var header = document.createElement('h3');
       header.textContent = data.name || ('레이어 ' + (idx + 1));

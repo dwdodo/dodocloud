@@ -110,10 +110,59 @@ function imageSlotData(imageNode) {
   };
 }
 
+// Converts a Figma solid Paint to a CSS color string. Returns null for
+// anything that isn't a visible solid fill (gradients, images, hidden
+// fills) — the HTML template's own color then applies instead.
+function paintToCssColor(paint) {
+  if (!paint || paint.type !== "SOLID" || paint.visible === false) return null;
+  var r = Math.round(paint.color.r * 255);
+  var g = Math.round(paint.color.g * 255);
+  var b = Math.round(paint.color.b * 255);
+  var a = typeof paint.opacity === "number" ? paint.opacity : 1;
+  if (a >= 1) return "rgb(" + r + "," + g + "," + b + ")";
+  return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")";
+}
+
+function firstSolidColor(fills) {
+  if (!fills) return null;
+  for (var i = 0; i < fills.length; i++) {
+    var color = paintToCssColor(fills[i]);
+    if (color) return color;
+  }
+  return null;
+}
+
+// Splits a text layer into style runs (each run = a stretch of characters
+// sharing the same font size + fill color), so mixed-size/mixed-color text
+// within a single Figma text layer survives the conversion. Returns null if
+// the node isn't a text node or the API call fails for any reason.
+function textRuns(textNode) {
+  if (!textNode || textNode.type !== "TEXT") return null;
+  var segments;
+  try {
+    segments = textNode.getStyledTextSegments(["fontSize", "fills"]);
+  } catch (e) {
+    return null;
+  }
+  return segments.map(function (seg) {
+    return {
+      text: seg.characters,
+      fontSize: typeof seg.fontSize === "number" ? seg.fontSize : null,
+      color: firstSolidColor(seg.fills)
+    };
+  });
+}
+
 // Extracts title/body/image for a single item inside a repeat group.
 function extractItem(itemNode) {
   if (itemNode.type === "TEXT") {
-    return { title: itemNode.characters, body: "", image: imageSlotData(null) };
+    return {
+      title: itemNode.characters,
+      titleRuns: textRuns(itemNode),
+      body: "",
+      bodyRuns: null,
+      image: imageSlotData(null)
+    };
   }
 
   var exclude = [];
@@ -133,7 +182,9 @@ function extractItem(itemNode) {
 
   return {
     title: titleNode && titleNode.type === "TEXT" ? titleNode.characters : "",
+    titleRuns: textRuns(titleNode),
     body: bodyNode && bodyNode.type === "TEXT" ? bodyNode.characters : "",
+    bodyRuns: textRuns(bodyNode),
     image: imageSlotData(imageNode)
   };
 }
@@ -160,7 +211,9 @@ function extractTemplateData(root) {
   return {
     name: root.name,
     title: titleNode && titleNode.type === "TEXT" ? titleNode.characters : "",
+    titleRuns: textRuns(titleNode),
     body: bodyNode && bodyNode.type === "TEXT" ? bodyNode.characters : "",
+    bodyRuns: textRuns(bodyNode),
     image: imageSlotData(imageNode),
     repeats: repeats,
     repeatKeys: Object.keys(repeats),
