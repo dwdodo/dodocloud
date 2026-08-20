@@ -14,7 +14,11 @@
     color: #1a1a1a;
     background: #fff;
   }
-  .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; height: 100vh; }
+  /* min-height (not a fixed height) lets the panel grow taller than the
+     window and scroll naturally, instead of squeezing #results down to
+     zero height when the hint text + inputs don't all fit at once. */
+  .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 100vh; }
+  #results { min-height: 120px; }
   h2 { font-size: 13px; margin: 0 0 2px; }
   p.hint { margin: 0; color: #666; line-height: 1.5; }
   code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; }
