@@ -160,6 +160,7 @@
   });
 
   document.getElementById('convert-btn').addEventListener('click', function () {
+    console.log('[ui] convert button clicked, sending message to plugin');
     parent.postMessage({ pluginMessage: { type: 'convert' } }, '*');
   });
 
@@ -453,6 +454,7 @@
 
   window.onmessage = function (event) {
     var msg = event.data.pluginMessage;
+    console.log('[ui] received message from plugin:', msg);
     if (!msg) return;
 
     if (msg.type === 'result') {

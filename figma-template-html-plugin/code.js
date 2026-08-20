@@ -226,8 +226,10 @@ function extractTemplateData(root) {
 
 function handleConvert() {
   var selection = figma.currentPage.selection;
+  console.log("[code] handleConvert called, selection length:", selection.length);
 
   if (selection.length === 0) {
+    console.log("[code] no selection, sending error back to ui");
     figma.ui.postMessage({
       type: "error",
       message: "변환할 템플릿 프레임(또는 레이어)을 먼저 선택해주세요."
@@ -241,14 +243,17 @@ function handleConvert() {
     try {
       results.push(extractTemplateData(node));
     } catch (e) {
+      console.log("[code] extractTemplateData threw:", e.message || String(e));
       results.push({ name: node.name, error: e.message || String(e) });
     }
   }
 
+  console.log("[code] posting result back to ui, count:", results.length);
   figma.ui.postMessage({ type: "result", results: results });
 }
 
 figma.ui.onmessage = function (msg) {
+  console.log("[code] figma.ui.onmessage received:", msg);
   if (!msg) return;
   if (msg.type === "convert") {
     handleConvert();
