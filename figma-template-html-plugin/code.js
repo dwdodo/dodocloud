@@ -101,6 +101,31 @@ function findSlotNode(root, keywords, excludeIds) {
   return null;
 }
 
+// Layer names often land on a wrapping FRAME/GROUP rather than the text
+// itself (e.g. a "Title" frame that contains an unnamed text layer one
+// level in). Falls back to the first text layer found anywhere inside the
+// matched node, so naming the wrapper is enough — you don't have to name
+// the text layer itself.
+function firstTextDescendant(node) {
+  if (!node) return null;
+  var queue = [node];
+  while (queue.length > 0) {
+    var current = queue.shift();
+    if (current.type === "TEXT") return current;
+    if ("children" in current) {
+      for (var c = 0; c < current.children.length; c++) {
+        queue.push(current.children[c]);
+      }
+    }
+  }
+  return null;
+}
+
+function resolveTextNode(node) {
+  if (!node) return null;
+  return node.type === "TEXT" ? node : firstTextDescendant(node);
+}
+
 function imageSlotData(imageNode) {
   if (!imageNode) return { present: false, width: 0, height: 0 };
   return {
@@ -180,11 +205,14 @@ function extractItem(itemNode) {
     imageNode = itemNode;
   }
 
+  var titleTextNode = resolveTextNode(titleNode);
+  var bodyTextNode = resolveTextNode(bodyNode);
+
   return {
-    title: titleNode && titleNode.type === "TEXT" ? titleNode.characters : "",
-    titleRuns: textRuns(titleNode),
-    body: bodyNode && bodyNode.type === "TEXT" ? bodyNode.characters : "",
-    bodyRuns: textRuns(bodyNode),
+    title: titleTextNode ? titleTextNode.characters : "",
+    titleRuns: textRuns(titleTextNode),
+    body: bodyTextNode ? bodyTextNode.characters : "",
+    bodyRuns: textRuns(bodyTextNode),
     image: imageSlotData(imageNode)
   };
 }
@@ -208,17 +236,20 @@ function extractTemplateData(root) {
     repeats[c.key] = "children" in c.node ? c.node.children.map(extractItem) : [];
   });
 
+  var titleTextNode = resolveTextNode(titleNode);
+  var bodyTextNode = resolveTextNode(bodyNode);
+
   return {
     name: root.name,
-    title: titleNode && titleNode.type === "TEXT" ? titleNode.characters : "",
-    titleRuns: textRuns(titleNode),
-    body: bodyNode && bodyNode.type === "TEXT" ? bodyNode.characters : "",
-    bodyRuns: textRuns(bodyNode),
+    title: titleTextNode ? titleTextNode.characters : "",
+    titleRuns: textRuns(titleTextNode),
+    body: bodyTextNode ? bodyTextNode.characters : "",
+    bodyRuns: textRuns(bodyTextNode),
     image: imageSlotData(imageNode),
     repeats: repeats,
     repeatKeys: Object.keys(repeats),
-    foundTitle: !!titleNode,
-    foundBody: !!bodyNode,
+    foundTitle: !!titleTextNode,
+    foundBody: !!bodyTextNode,
     foundImage: !!imageNode,
     foundRepeat: repeatContainers.length > 0
   };
