@@ -309,29 +309,43 @@
     if (imageEl && data.image && data.image.present) fillImageSlot(imageEl, data.image);
   }
 
-  // Same as querySelectorAll(selector), but skips elements that live inside
-  // a [data-figma-repeat] container (those belong to the per-item template
-  // and are filled separately, even if they reuse the same slot names).
-  function firstTopLevelMatch(doc, selector) {
-    var candidates = doc.querySelectorAll(selector);
-    for (var i = 0; i < candidates.length; i++) {
-      if (!candidates[i].closest('[data-figma-repeat]')) return candidates[i];
-    }
-    return null;
+  // Parses a data-figma-slot value: bare "title"/"body"/"image" (the main
+  // section), or "title:about" / "title-about" for a named section — the
+  // same "role" or "role: key" convention used for repeat groups.
+  function parseSlotAttr(value) {
+    var m = (value || '').trim().match(/^(title|body|image)(?:\s*[:\-]\s*(.+))?$/i);
+    if (!m) return null;
+    return { role: m[1].toLowerCase(), key: (m[2] || '').trim().toLowerCase() };
+  }
+
+  // data.slots[""] already holds the same data as the flat data.title/
+  // data.body/data.image fields whenever a bare-named layer was found, so
+  // this needs no special-casing for the default section - only a safe
+  // fallback for a key nothing matched at all.
+  function slotDataFor(data, key) {
+    if (data.slots && data.slots[key]) return data.slots[key];
+    return { title: '', titleRuns: null, body: '', bodyRuns: null, image: { present: false, width: 0, height: 0 } };
   }
 
   function applyTemplate(templateHtml, data, allowedSizes) {
     var doc = new DOMParser().parseFromString(templateHtml, 'text/html');
     var collector = createStyleCollector();
 
-    var titleEl = firstTopLevelMatch(doc, '[data-figma-slot="title"]');
-    fillTextSlot(titleEl, data.title, data.titleRuns, allowedSizes, collector);
-
-    var bodyEl = firstTopLevelMatch(doc, '[data-figma-slot="body"]');
-    fillTextSlot(bodyEl, data.body, data.bodyRuns, allowedSizes, collector);
-
-    var imageEl = firstTopLevelMatch(doc, '[data-figma-slot="image"]');
-    if (imageEl && data.image && data.image.present) fillImageSlot(imageEl, data.image);
+    var slotEls = Array.prototype.filter.call(doc.querySelectorAll('[data-figma-slot]'), function (el) {
+      return !el.closest('[data-figma-repeat]');
+    });
+    slotEls.forEach(function (el) {
+      var parsed = parseSlotAttr(el.getAttribute('data-figma-slot'));
+      if (!parsed) return;
+      var slotData = slotDataFor(data, parsed.key);
+      if (parsed.role === 'title') {
+        fillTextSlot(el, slotData.title, slotData.titleRuns, allowedSizes, collector);
+      } else if (parsed.role === 'body') {
+        fillTextSlot(el, slotData.body, slotData.bodyRuns, allowedSizes, collector);
+      } else if (parsed.role === 'image' && slotData.image && slotData.image.present) {
+        fillImageSlot(el, slotData.image);
+      }
+    });
 
     var repeatEls = doc.querySelectorAll('[data-figma-repeat]');
     var repeatKeys = data.repeats ? Object.keys(data.repeats) : [];
@@ -411,8 +425,22 @@
             })
             .join('')
         : '<span class="badge miss">반복 그룹 없음</span>';
+
+      var namedSectionKeys = (data.slotKeys || []).filter(function (k) { return k !== ''; });
+      var sectionBadges = namedSectionKeys
+        .map(function (k) {
+          var s = data.slots[k];
+          var parts = [];
+          if (s.foundTitle) parts.push('T');
+          if (s.foundBody) parts.push('B');
+          if (s.foundImage) parts.push('I');
+          return '<span class="badge ok">' + escapeHtml(k) + ' (' + (parts.join('') || '-') + ')</span>';
+        })
+        .join('');
+
       badges.innerHTML =
-        badge('Title', data.foundTitle) + badge('Body', data.foundBody) + badge('Image', data.foundImage) + repeatBadges;
+        badge('Title', data.foundTitle) + badge('Body', data.foundBody) + badge('Image', data.foundImage) +
+        repeatBadges + sectionBadges;
       card.appendChild(badges);
 
       var out = document.createElement('textarea');

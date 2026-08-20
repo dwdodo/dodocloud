@@ -102,6 +102,45 @@
 
 세 슬롯 모두 선택이며, 틀에 없는 슬롯은 그냥 무시됩니다.
 
+### 여러 섹션 (Title/Body/Image가 한 프레임에 여러 벌 있는 경우)
+
+프레임 하나가 "히어로 + About + Menu"처럼 **서로 다른 섹션을 여러 개** 담고 있고, 각 섹션마다
+자기만의 제목/본문/이미지가 필요하다면, 반복 그룹과 같은 방식으로 **이름 뒤에 구간명을 붙여서**
+구분합니다.
+
+| 레이어 이름 예시 | 소속 섹션 |
+|------------------|-----------|
+| `Title`, `Body`, `Image` (구간명 없이 단독) | 기본 섹션(이름 없음) |
+| `Title: About` | `about` 섹션의 제목 |
+| `Body: About` | `about` 섹션의 본문 |
+| `Image: About` | `about` 섹션의 이미지 |
+| `Title: Menu` | `menu` 섹션의 제목 |
+
+Title/Body/Image는 굳이 하나의 그룹 안에 모여있지 않아도 됩니다 — 트리 어디에 있든 이름 뒤에
+붙은 구간명(`about`, `menu`)이 같으면 같은 섹션으로 합쳐집니다.
+
+HTML 쪽은 `data-figma-slot="title:about"`, `data-figma-slot="body:about"`처럼 콜론 뒤에 같은
+구간명을 붙입니다:
+
+```html
+<h1 data-figma-slot="title"></h1>         <!-- 기본 섹션 -->
+<div data-figma-slot="body"></div>
+
+<section>
+  <h2 data-figma-slot="title:about"></h2>  <!-- about 섹션 -->
+  <p  data-figma-slot="body:about"></p>
+  <img data-figma-slot="image:about" src="" alt="" />
+</section>
+
+<section>
+  <h2 data-figma-slot="title:menu"></h2>   <!-- menu 섹션 -->
+  <div data-figma-repeat="메뉴리스트">...</div>
+</section>
+```
+
+반복 그룹과 마찬가지로 섹션 이름도 자유롭게 지을 수 있고, 한 프레임에 원하는 만큼 섹션을
+만들 수 있습니다.
+
 ### 반복 그룹 슬롯
 
 개수가 가변적인 카드/리스트를 만들려면 `data-figma-repeat="<키>"`를 쓰고, 그 **바로 안에
