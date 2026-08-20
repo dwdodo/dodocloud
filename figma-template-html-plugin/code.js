@@ -23,7 +23,7 @@ figma.showUI(__html__, { width: 460, height: 720 });
 // Keyword lists used to guess which layer plays which role.
 // Matching is: layer name (lowercased) === keyword, or includes keyword.
 var TITLE_KEYWORDS = ["title", "headline", "heading", "제목", "타이틀"];
-var BODY_KEYWORDS = ["body", "content", "description", "copy", "본문", "내용", "설명", "text"];
+var BODY_KEYWORDS = ["body", "content", "description", "copy", "본문", "내용", "설명", "text", "텍스트"];
 var IMAGE_KEYWORDS = ["image", "photo", "picture", "thumbnail", "이미지", "사진", "img"];
 
 // A repeat group layer can be named two ways:
@@ -154,28 +154,29 @@ function findAllNamedSlots(root, keywords, excludeIds) {
 }
 
 // Layer names often land on a wrapping FRAME/GROUP rather than the text
-// itself (e.g. a "Title" frame that contains an unnamed text layer one
-// level in). Falls back to the first text layer found anywhere inside the
-// matched node, so naming the wrapper is enough — you don't have to name
-// the text layer itself.
-function firstTextDescendant(node) {
-  if (!node) return null;
+// itself (e.g. a "Title" frame containing "소제목" + "대제목" as two
+// separate, unrelated-looking text layers one level in, rather than one
+// text layer with two lines). Collects every text layer found anywhere
+// inside the matched node (in tree/layer-panel order), so naming the
+// wrapper is enough - you don't have to name the text layer(s) themselves,
+// and a title/body split across multiple text layers is still captured
+// in full rather than just the first one found.
+function allTextDescendants(node) {
+  var result = [];
   var queue = [node];
   while (queue.length > 0) {
     var current = queue.shift();
-    if (current.type === "TEXT") return current;
+    if (current.type === "TEXT") {
+      result.push(current);
+      continue;
+    }
     if ("children" in current) {
       for (var c = 0; c < current.children.length; c++) {
         queue.push(current.children[c]);
       }
     }
   }
-  return null;
-}
-
-function resolveTextNode(node) {
-  if (!node) return null;
-  return node.type === "TEXT" ? node : firstTextDescendant(node);
+  return result;
 }
 
 function imageSlotData(imageNode) {
@@ -230,6 +231,34 @@ function textRuns(textNode) {
   });
 }
 
+// Resolves a matched title/body node down to its actual text content: the
+// node itself if it's already TEXT, or every text layer found inside it
+// (joined with newlines) if it's a wrapping frame/group - so "타이틀"
+// containing separate "소제목" + "대제목" text layers comes out as both
+// lines, not just whichever one is found first.
+function combinedTextAndRuns(node) {
+  if (!node) return { text: "", runs: null };
+  if (node.type === "TEXT") return { text: node.characters, runs: textRuns(node) };
+
+  var textNodes = allTextDescendants(node);
+  if (textNodes.length === 0) return { text: "", runs: null };
+  if (textNodes.length === 1) return { text: textNodes[0].characters, runs: textRuns(textNodes[0]) };
+
+  var texts = [];
+  var runs = [];
+  textNodes.forEach(function (tn, idx) {
+    texts.push(tn.characters);
+    var tnRuns = textRuns(tn);
+    if (tnRuns) {
+      runs = runs.concat(tnRuns);
+    } else if (tn.characters) {
+      runs.push({ text: tn.characters, fontSize: null, color: null });
+    }
+    if (idx < textNodes.length - 1) runs.push({ text: "\n", fontSize: null, color: null });
+  });
+  return { text: texts.join("\n"), runs: runs.length > 0 ? runs : null };
+}
+
 // Extracts title/body/image for a single item inside a repeat group.
 function extractItem(itemNode) {
   if (itemNode.type === "TEXT") {
@@ -257,42 +286,53 @@ function extractItem(itemNode) {
     imageNode = itemNode;
   }
 
-  var titleTextNode = resolveTextNode(titleNode);
-  var bodyTextNode = resolveTextNode(bodyNode);
+  var titleResolved = combinedTextAndRuns(titleNode);
+  var bodyResolved = combinedTextAndRuns(bodyNode);
 
   console.log(
     "[code] item '" + itemNode.name + "':",
-    "title <-", titleNode ? titleNode.name : null, "=>", titleTextNode ? titleTextNode.characters : "(none)",
-    "| body <-", bodyNode ? bodyNode.name : null, "=>", bodyTextNode ? bodyTextNode.characters : "(none)",
+    "title <-", titleNode ? titleNode.name : null, "=>", titleResolved.text || "(none)",
+    "| body <-", bodyNode ? bodyNode.name : null, "=>", bodyResolved.text || "(none)",
     "| image:", !!imageNode
   );
 
   return {
-    title: titleTextNode ? titleTextNode.characters : "",
-    titleRuns: textRuns(titleTextNode),
-    body: bodyTextNode ? bodyTextNode.characters : "",
-    bodyRuns: textRuns(bodyTextNode),
+    title: titleResolved.text,
+    titleRuns: titleResolved.runs,
+    body: bodyResolved.text,
+    bodyRuns: bodyResolved.runs,
     image: imageSlotData(imageNode)
   };
 }
 
 function extractTemplateData(root) {
   var repeatContainers = findAllRepeatContainers(root);
-  var exclude = repeatContainers.map(function (c) {
+  var globalExclude = repeatContainers.map(function (c) {
     return c.node.id;
   });
 
-  var titleSlots = findAllNamedSlots(root, TITLE_KEYWORDS, exclude);
-  exclude = exclude.concat(titleSlots.map(function (s) { return s.node.id; }));
+  // Auto-detect implicit "sections": direct children of root that aren't
+  // themselves a title/body/image match and aren't a repeat container.
+  // Each becomes its own section, keyed by its own layer name - so a
+  // multi-section page (Hero/About/Menu as three sibling top-level frames,
+  // which is how people naturally organize these things) doesn't need every
+  // title/body/image inside it explicitly tagged "Title: about" etc. An
+  // explicit "Title: <key>" still works too and takes that key as usual.
+  var sectionChildren = [];
+  if ("children" in root) {
+    root.children.forEach(function (child) {
+      if (globalExclude.indexOf(child.id) !== -1) return;
+      if (
+        parseNamedSlot(child.name, TITLE_KEYWORDS) !== null ||
+        parseNamedSlot(child.name, BODY_KEYWORDS) !== null ||
+        parseNamedSlot(child.name, IMAGE_KEYWORDS) !== null
+      ) {
+        return;
+      }
+      sectionChildren.push(child);
+    });
+  }
 
-  var bodySlots = findAllNamedSlots(root, BODY_KEYWORDS, exclude);
-  exclude = exclude.concat(bodySlots.map(function (s) { return s.node.id; }));
-
-  var imageSlots = findAllNamedSlots(root, IMAGE_KEYWORDS, exclude);
-
-  // Merge the three independent searches into one map keyed by section
-  // name, so e.g. "Title: About" + "Body: About" + "Image: About" (three
-  // separate layers anywhere in the tree) become one "about" section.
   var slots = {};
   function ensureSlot(key) {
     if (!slots[key]) {
@@ -305,45 +345,69 @@ function extractTemplateData(root) {
     return slots[key];
   }
 
-  titleSlots.forEach(function (s) {
-    var textNode = resolveTextNode(s.node);
-    var slot = ensureSlot(s.key);
-    if (slot.foundTitle) {
+  // Scans `scopeNode` for title/body/image layers; a BARE match (no
+  // "Title: key" suffix) is filed under `defaultKey` instead of "" - so
+  // each auto-detected section scans its own subtree with its own name as
+  // the fallback key, while an explicit "Title: xyz" anywhere still wins.
+  function collectSlotsFrom(scopeNode, baseExclude, defaultKey, sectionLabel) {
+    var exclude = baseExclude.slice();
+
+    var titleSlots = findAllNamedSlots(scopeNode, TITLE_KEYWORDS, exclude);
+    exclude = exclude.concat(titleSlots.map(function (s) { return s.node.id; }));
+    var bodySlots = findAllNamedSlots(scopeNode, BODY_KEYWORDS, exclude);
+    exclude = exclude.concat(bodySlots.map(function (s) { return s.node.id; }));
+    var imageSlots = findAllNamedSlots(scopeNode, IMAGE_KEYWORDS, exclude);
+
+    titleSlots.forEach(function (s) {
+      var key = s.key || defaultKey;
+      var resolved = combinedTextAndRuns(s.node);
+      var slot = ensureSlot(key);
+      if (slot.foundTitle) {
+        console.log(
+          "[code] WARNING: two layers both map to title key '" + key + "' (section: " + sectionLabel +
+          ") - '" + s.node.name + "' overwrites the previous match."
+        );
+      }
+      slot.title = resolved.text;
+      slot.titleRuns = resolved.runs;
+      slot.foundTitle = !!resolved.text || resolved.runs !== null;
       console.log(
-        "[code] WARNING: two layers both map to title key '" + s.key + "' - '" + s.node.name +
-        "' overwrites the previous match. Give one of them a distinct key (e.g. 'Title: " + s.key + "2')."
+        "[code] title section '" + (key || "(기본)") + "' (from " + sectionLabel + ") <- layer '" + s.node.name + "'",
+        "=> resolved text:", resolved.text || "(찾은 텍스트 없음)"
       );
-    }
-    slot.title = textNode ? textNode.characters : "";
-    slot.titleRuns = textRuns(textNode);
-    slot.foundTitle = !!textNode;
-    console.log(
-      "[code] title section '" + (s.key || "(기본)") + "' <- layer '" + s.node.name + "' (" + s.node.type + ")",
-      "=> resolved text:", textNode ? textNode.characters : "(찾은 텍스트 없음)"
-    );
-  });
-  bodySlots.forEach(function (s) {
-    var textNode = resolveTextNode(s.node);
-    var slot = ensureSlot(s.key);
-    if (slot.foundBody) {
+    });
+    bodySlots.forEach(function (s) {
+      var key = s.key || defaultKey;
+      var resolved = combinedTextAndRuns(s.node);
+      var slot = ensureSlot(key);
+      if (slot.foundBody) {
+        console.log(
+          "[code] WARNING: two layers both map to body key '" + key + "' (section: " + sectionLabel +
+          ") - '" + s.node.name + "' overwrites the previous match."
+        );
+      }
+      slot.body = resolved.text;
+      slot.bodyRuns = resolved.runs;
+      slot.foundBody = !!resolved.text || resolved.runs !== null;
       console.log(
-        "[code] WARNING: two layers both map to body key '" + s.key + "' - '" + s.node.name +
-        "' overwrites the previous match. Give one of them a distinct key (e.g. 'Body: " + s.key + "2')."
+        "[code] body section '" + (key || "(기본)") + "' (from " + sectionLabel + ") <- layer '" + s.node.name + "'",
+        "=> resolved text:", resolved.text || "(찾은 텍스트 없음)"
       );
-    }
-    slot.body = textNode ? textNode.characters : "";
-    slot.bodyRuns = textRuns(textNode);
-    slot.foundBody = !!textNode;
-    console.log(
-      "[code] body section '" + (s.key || "(기본)") + "' <- layer '" + s.node.name + "' (" + s.node.type + ")",
-      "=> resolved text:", textNode ? textNode.characters : "(찾은 텍스트 없음)"
-    );
-  });
-  imageSlots.forEach(function (s) {
-    var slot = ensureSlot(s.key);
-    slot.image = imageSlotData(s.node);
-    slot.foundImage = true;
-    console.log("[code] image section '" + (s.key || "(기본)") + "' <- layer '" + s.node.name + "' (" + s.node.type + ")");
+    });
+    imageSlots.forEach(function (s) {
+      var key = s.key || defaultKey;
+      var slot = ensureSlot(key);
+      slot.image = imageSlotData(s.node);
+      slot.foundImage = true;
+      console.log("[code] image section '" + (key || "(기본)") + "' (from " + sectionLabel + ") <- layer '" + s.node.name + "'");
+    });
+  }
+
+  var sectionExclude = globalExclude.concat(sectionChildren.map(function (c) { return c.id; }));
+  collectSlotsFrom(root, sectionExclude, "", "루트");
+  sectionChildren.forEach(function (child) {
+    var key = child.name.trim().toLowerCase();
+    collectSlotsFrom(child, globalExclude, key, child.name);
   });
 
   var repeats = {};
