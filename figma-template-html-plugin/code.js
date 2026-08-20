@@ -260,6 +260,13 @@ function extractItem(itemNode) {
   var titleTextNode = resolveTextNode(titleNode);
   var bodyTextNode = resolveTextNode(bodyNode);
 
+  console.log(
+    "[code] item '" + itemNode.name + "':",
+    "title <-", titleNode ? titleNode.name : null, "=>", titleTextNode ? titleTextNode.characters : "(none)",
+    "| body <-", bodyNode ? bodyNode.name : null, "=>", bodyTextNode ? bodyTextNode.characters : "(none)",
+    "| image:", !!imageNode
+  );
+
   return {
     title: titleTextNode ? titleTextNode.characters : "",
     titleRuns: textRuns(titleTextNode),
@@ -301,25 +308,47 @@ function extractTemplateData(root) {
   titleSlots.forEach(function (s) {
     var textNode = resolveTextNode(s.node);
     var slot = ensureSlot(s.key);
+    if (slot.foundTitle) {
+      console.log(
+        "[code] WARNING: two layers both map to title key '" + s.key + "' - '" + s.node.name +
+        "' overwrites the previous match. Give one of them a distinct key (e.g. 'Title: " + s.key + "2')."
+      );
+    }
     slot.title = textNode ? textNode.characters : "";
     slot.titleRuns = textRuns(textNode);
     slot.foundTitle = !!textNode;
+    console.log(
+      "[code] title section '" + (s.key || "(기본)") + "' <- layer '" + s.node.name + "' (" + s.node.type + ")",
+      "=> resolved text:", textNode ? textNode.characters : "(찾은 텍스트 없음)"
+    );
   });
   bodySlots.forEach(function (s) {
     var textNode = resolveTextNode(s.node);
     var slot = ensureSlot(s.key);
+    if (slot.foundBody) {
+      console.log(
+        "[code] WARNING: two layers both map to body key '" + s.key + "' - '" + s.node.name +
+        "' overwrites the previous match. Give one of them a distinct key (e.g. 'Body: " + s.key + "2')."
+      );
+    }
     slot.body = textNode ? textNode.characters : "";
     slot.bodyRuns = textRuns(textNode);
     slot.foundBody = !!textNode;
+    console.log(
+      "[code] body section '" + (s.key || "(기본)") + "' <- layer '" + s.node.name + "' (" + s.node.type + ")",
+      "=> resolved text:", textNode ? textNode.characters : "(찾은 텍스트 없음)"
+    );
   });
   imageSlots.forEach(function (s) {
     var slot = ensureSlot(s.key);
     slot.image = imageSlotData(s.node);
     slot.foundImage = true;
+    console.log("[code] image section '" + (s.key || "(기본)") + "' <- layer '" + s.node.name + "' (" + s.node.type + ")");
   });
 
   var repeats = {};
   repeatContainers.forEach(function (c) {
+    console.log("[code] repeat group '" + c.key + "' <- layer '" + c.node.name + "'");
     repeats[c.key] = "children" in c.node ? c.node.children.map(extractItem) : [];
   });
 
