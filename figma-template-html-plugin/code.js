@@ -239,6 +239,15 @@ function extractTemplateData(root) {
   var titleTextNode = resolveTextNode(titleNode);
   var bodyTextNode = resolveTextNode(bodyNode);
 
+  console.log(
+    "[code] titleNode:", titleNode ? { name: titleNode.name, type: titleNode.type } : null,
+    "-> resolved:", titleTextNode ? { name: titleTextNode.name, characters: titleTextNode.characters } : null
+  );
+  console.log(
+    "[code] bodyNode:", bodyNode ? { name: bodyNode.name, type: bodyNode.type } : null,
+    "-> resolved:", bodyTextNode ? { name: bodyTextNode.name, characters: bodyTextNode.characters } : null
+  );
+
   return {
     name: root.name,
     title: titleTextNode ? titleTextNode.characters : "",

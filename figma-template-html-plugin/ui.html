@@ -428,10 +428,20 @@
       copyBtn.className = 'secondary';
       copyBtn.textContent = '복사';
       copyBtn.addEventListener('click', function () {
-        navigator.clipboard.writeText(outputHtml).then(function () {
-          copyBtn.textContent = '복사됨!';
-          setTimeout(function () { copyBtn.textContent = '복사'; }, 1200);
-        });
+        // navigator.clipboard is unavailable inside Figma's plugin UI
+        // iframe, so copy via the classic select + execCommand route
+        // instead (works reliably in that sandboxed context).
+        out.focus();
+        out.select();
+        out.setSelectionRange(0, out.value.length);
+        var ok = false;
+        try {
+          ok = document.execCommand('copy');
+        } catch (e) {
+          ok = false;
+        }
+        copyBtn.textContent = ok ? '복사됨!' : '복사 실패';
+        setTimeout(function () { copyBtn.textContent = '복사'; }, 1200);
       });
       row.appendChild(copyBtn);
 
