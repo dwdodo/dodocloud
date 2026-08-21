@@ -235,14 +235,28 @@ function textRuns(textNode) {
 // node itself if it's already TEXT, or every text layer found inside it
 // (joined with newlines) if it's a wrapping frame/group - so "타이틀"
 // containing separate "소제목" + "대제목" text layers comes out as both
-// lines, not just whichever one is found first.
+// lines combined, not just whichever one is found first.
+//
+// When there's more than one text layer inside, each one is ALSO exposed
+// individually under `parts`, keyed by that text layer's own name (e.g.
+// "소제목", "대제목") - so the HTML side can address them as two separate
+// elements ("title:혜택.소제목" / "title:혜택.대제목") when the combined
+// single-element text isn't what's wanted, without any extra Figma naming.
 function combinedTextAndRuns(node) {
-  if (!node) return { text: "", runs: null };
-  if (node.type === "TEXT") return { text: node.characters, runs: textRuns(node) };
+  if (!node) return { text: "", runs: null, parts: null };
+  if (node.type === "TEXT") return { text: node.characters, runs: textRuns(node), parts: null };
 
   var textNodes = allTextDescendants(node);
-  if (textNodes.length === 0) return { text: "", runs: null };
-  if (textNodes.length === 1) return { text: textNodes[0].characters, runs: textRuns(textNodes[0]) };
+  if (textNodes.length === 0) return { text: "", runs: null, parts: null };
+  if (textNodes.length === 1) {
+    return { text: textNodes[0].characters, runs: textRuns(textNodes[0]), parts: null };
+  }
+
+  var parts = {};
+  textNodes.forEach(function (tn) {
+    var partKey = (tn.name || "").trim().toLowerCase();
+    if (partKey) parts[partKey] = { text: tn.characters, runs: textRuns(tn) };
+  });
 
   var texts = [];
   var runs = [];
@@ -256,7 +270,7 @@ function combinedTextAndRuns(node) {
     }
     if (idx < textNodes.length - 1) runs.push({ text: "\n", fontSize: null, color: null });
   });
-  return { text: texts.join("\n"), runs: runs.length > 0 ? runs : null };
+  return { text: texts.join("\n"), runs: runs.length > 0 ? runs : null, parts: parts };
 }
 
 // Extracts title/body/image for a single item inside a repeat group.
@@ -265,8 +279,10 @@ function extractItem(itemNode) {
     return {
       title: itemNode.characters,
       titleRuns: textRuns(itemNode),
+      titleParts: null,
       body: "",
       bodyRuns: null,
+      bodyParts: null,
       image: imageSlotData(null)
     };
   }
@@ -299,8 +315,10 @@ function extractItem(itemNode) {
   return {
     title: titleResolved.text,
     titleRuns: titleResolved.runs,
+    titleParts: titleResolved.parts,
     body: bodyResolved.text,
     bodyRuns: bodyResolved.runs,
+    bodyParts: bodyResolved.parts,
     image: imageSlotData(imageNode)
   };
 }
@@ -337,8 +355,8 @@ function extractTemplateData(root) {
   function ensureSlot(key) {
     if (!slots[key]) {
       slots[key] = {
-        title: "", titleRuns: null, foundTitle: false,
-        body: "", bodyRuns: null, foundBody: false,
+        title: "", titleRuns: null, titleParts: null, foundTitle: false,
+        body: "", bodyRuns: null, bodyParts: null, foundBody: false,
         image: imageSlotData(null), foundImage: false
       };
     }
@@ -370,6 +388,7 @@ function extractTemplateData(root) {
       }
       slot.title = resolved.text;
       slot.titleRuns = resolved.runs;
+      slot.titleParts = resolved.parts;
       slot.foundTitle = !!resolved.text || resolved.runs !== null;
       console.log(
         "[code] title section '" + (key || "(기본)") + "' (from " + sectionLabel + ") <- layer '" + s.node.name + "'",
@@ -388,6 +407,7 @@ function extractTemplateData(root) {
       }
       slot.body = resolved.text;
       slot.bodyRuns = resolved.runs;
+      slot.bodyParts = resolved.parts;
       slot.foundBody = !!resolved.text || resolved.runs !== null;
       console.log(
         "[code] body section '" + (key || "(기본)") + "' (from " + sectionLabel + ") <- layer '" + s.node.name + "'",
@@ -421,8 +441,8 @@ function extractTemplateData(root) {
   // (Don't use ensureSlot here - that would add a spurious "" entry to
   // slotKeys even when nothing at all was found under the default key.)
   var mainSlot = slots[""] || {
-    title: "", titleRuns: null, foundTitle: false,
-    body: "", bodyRuns: null, foundBody: false,
+    title: "", titleRuns: null, titleParts: null, foundTitle: false,
+    body: "", bodyRuns: null, bodyParts: null, foundBody: false,
     image: imageSlotData(null), foundImage: false
   };
 
@@ -430,8 +450,10 @@ function extractTemplateData(root) {
     name: root.name,
     title: mainSlot.title,
     titleRuns: mainSlot.titleRuns,
+    titleParts: mainSlot.titleParts,
     body: mainSlot.body,
     bodyRuns: mainSlot.bodyRuns,
+    bodyParts: mainSlot.bodyParts,
     image: mainSlot.image,
     foundTitle: mainSlot.foundTitle,
     foundBody: mainSlot.foundBody,

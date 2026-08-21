@@ -297,25 +297,23 @@
 
   // Fills title/body/image slots that live within `root` (inclusive of
   // root itself, so a repeat-item template can be a single slot element
-  // with no wrapper).
-  function fillSlotsWithin(root, data, allowedSizes, collector) {
-    var titleEl = root.matches('[data-figma-slot="title"]') ? root : root.querySelector('[data-figma-slot="title"]');
-    fillTextSlot(titleEl, data.title, data.titleRuns, allowedSizes, collector);
-
-    var bodyEl = root.matches('[data-figma-slot="body"]') ? root : root.querySelector('[data-figma-slot="body"]');
-    fillTextSlot(bodyEl, data.body, data.bodyRuns, allowedSizes, collector);
-
-    var imageEl = root.matches('[data-figma-slot="image"]') ? root : root.querySelector('[data-figma-slot="image"]');
-    if (imageEl && data.image && data.image.present) fillImageSlot(imageEl, data.image);
-  }
-
-  // Parses a data-figma-slot value: bare "title"/"body"/"image" (the main
-  // section), or "title:about" / "title-about" for a named section — the
-  // same "role" or "role: key" convention used for repeat groups.
+  // Parses a data-figma-slot value:
+  //   "title"                bare - the main/default section
+  //   "title:about"          named section "about"
+  //   "title.소제목"          the "소제목" sub-part of the main section's title
+  //   "title:about.소제목"    the "소제목" sub-part of the "about" section's title
+  // "role" or "role: key" is the same convention used for repeat groups;
+  // ".part" additionally addresses one individual text layer when a
+  // title/body wrapper contains several (e.g. "소제목" + "대제목") and the
+  // HTML wants them as separate elements instead of one combined block.
   function parseSlotAttr(value) {
-    var m = (value || '').trim().match(/^(title|body|image)(?:\s*[:\-]\s*(.+))?$/i);
+    var m = (value || '').trim().match(/^(title|body|image)(?:\s*[:\-]\s*([^.]*))?(?:\.(.+))?$/i);
     if (!m) return null;
-    return { role: m[1].toLowerCase(), key: (m[2] || '').trim().toLowerCase() };
+    return {
+      role: m[1].toLowerCase(),
+      key: (m[2] || '').trim().toLowerCase(),
+      part: (m[3] || '').trim().toLowerCase() || null
+    };
   }
 
   // data.slots[""] already holds the same data as the flat data.title/
@@ -324,7 +322,40 @@
   // fallback for a key nothing matched at all.
   function slotDataFor(data, key) {
     if (data.slots && data.slots[key]) return data.slots[key];
-    return { title: '', titleRuns: null, body: '', bodyRuns: null, image: { present: false, width: 0, height: 0 } };
+    return { title: '', titleRuns: null, titleParts: null, body: '', bodyRuns: null, bodyParts: null, image: { present: false, width: 0, height: 0 } };
+  }
+
+  // Resolves the text+runs to actually render for a title/body role,
+  // optionally narrowed down to one named sub-part (see parseSlotAttr).
+  function textAndRunsFor(slotData, role, part) {
+    var textKey = role === 'title' ? 'title' : 'body';
+    var runsKey = role === 'title' ? 'titleRuns' : 'bodyRuns';
+    var partsKey = role === 'title' ? 'titleParts' : 'bodyParts';
+    if (part) {
+      var found = slotData[partsKey] && slotData[partsKey][part];
+      return found ? { text: found.text, runs: found.runs } : { text: '', runs: null };
+    }
+    return { text: slotData[textKey], runs: slotData[runsKey] };
+  }
+
+  // Fills every [data-figma-slot] found within `root` (inclusive of root
+  // itself, so a repeat-item template can be a single slot element with no
+  // wrapper). Used for repeat-group items, where `data` IS the item's own
+  // title/body/image/*Parts fields directly (no section-key lookup needed).
+  function fillSlotsWithin(root, data, allowedSizes, collector) {
+    var candidates = root.matches('[data-figma-slot]') ? [root] : [];
+    candidates = candidates.concat(Array.prototype.slice.call(root.querySelectorAll('[data-figma-slot]')));
+
+    candidates.forEach(function (el) {
+      var parsed = parseSlotAttr(el.getAttribute('data-figma-slot'));
+      if (!parsed) return;
+      if (parsed.role === 'title' || parsed.role === 'body') {
+        var resolved = textAndRunsFor(data, parsed.role, parsed.part);
+        fillTextSlot(el, resolved.text, resolved.runs, allowedSizes, collector);
+      } else if (parsed.role === 'image' && data.image && data.image.present) {
+        fillImageSlot(el, data.image);
+      }
+    });
   }
 
   function applyTemplate(templateHtml, data, allowedSizes) {
@@ -338,10 +369,9 @@
       var parsed = parseSlotAttr(el.getAttribute('data-figma-slot'));
       if (!parsed) return;
       var slotData = slotDataFor(data, parsed.key);
-      if (parsed.role === 'title') {
-        fillTextSlot(el, slotData.title, slotData.titleRuns, allowedSizes, collector);
-      } else if (parsed.role === 'body') {
-        fillTextSlot(el, slotData.body, slotData.bodyRuns, allowedSizes, collector);
+      if (parsed.role === 'title' || parsed.role === 'body') {
+        var resolved = textAndRunsFor(slotData, parsed.role, parsed.part);
+        fillTextSlot(el, resolved.text, resolved.runs, allowedSizes, collector);
       } else if (parsed.role === 'image' && slotData.image && slotData.image.present) {
         fillImageSlot(el, slotData.image);
       }
