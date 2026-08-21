@@ -323,6 +323,27 @@ function extractItem(itemNode) {
   };
 }
 
+// Classifies a single child of a repeat group as a "block" - either a
+// text block or an image block - for repeat groups that hold a free-form,
+// ORDERED sequence of paragraphs and images (e.g. "text, image, image" or
+// "image, text") rather than a fixed title+body+image shape per item. The
+// child's position in the array is preserved, so reordering/duplicating
+// layers in Figma reorders/duplicates blocks in the output the same way.
+function classifyBlock(node) {
+  if (node.type === "TEXT") {
+    return { type: "text", text: node.characters, runs: textRuns(node) };
+  }
+
+  var textNodes = allTextDescendants(node);
+  if (textNodes.length > 0) {
+    var combined = combinedTextAndRuns(node);
+    return { type: "text", text: combined.text, runs: combined.runs };
+  }
+
+  var imgNode = findSlotNode(node, IMAGE_KEYWORDS, []);
+  return { type: "image", image: imageSlotData(imgNode || node) };
+}
+
 function extractTemplateData(root) {
   var repeatContainers = findAllRepeatContainers(root);
   var globalExclude = repeatContainers.map(function (c) {
@@ -431,9 +452,17 @@ function extractTemplateData(root) {
   });
 
   var repeats = {};
+  var repeatBlocks = {};
   repeatContainers.forEach(function (c) {
     console.log("[code] repeat group '" + c.key + "' <- layer '" + c.node.name + "'");
-    repeats[c.key] = "children" in c.node ? c.node.children.map(extractItem) : [];
+    var children = "children" in c.node ? c.node.children : [];
+    repeats[c.key] = children.map(extractItem);
+    // Parallel "blocks" view of the same children, for repeat groups used
+    // as a free-form ordered text/image sequence rather than fixed items -
+    // see classifyBlock. Whichever the HTML template actually addresses
+    // (data-figma-repeat vs. data-figma-repeat + data-figma-repeat-type
+    // variants) is decided entirely on the ui.html side.
+    repeatBlocks[c.key] = children.map(classifyBlock);
   });
 
   // "" is the default/main section - kept as flat title/body/image/found*
@@ -461,6 +490,7 @@ function extractTemplateData(root) {
     slots: slots,
     slotKeys: Object.keys(slots),
     repeats: repeats,
+    repeatBlocks: repeatBlocks,
     repeatKeys: Object.keys(repeats),
     foundRepeat: repeatContainers.length > 0
   };

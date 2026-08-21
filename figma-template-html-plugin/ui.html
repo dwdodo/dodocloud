@@ -358,6 +358,40 @@
     });
   }
 
+  // Fills a repeat container whose authored markup provides one variant
+  // child per block TYPE, marked with data-figma-repeat-type="text" /
+  // "image", instead of one fixed item template - for a repeat group used
+  // as a free-form ORDERED sequence of paragraphs and images (rather than
+  // fixed title+body+image items). Renders `blocks` in order, picking the
+  // matching variant for each block's type. Returns false (leaving the
+  // container's authored markup untouched) if no variant children exist,
+  // so this cleanly falls back to the normal single-item-template mode.
+  function fillBlockSequence(repeatEl, blocks, allowedSizes, collector) {
+    var variants = {};
+    Array.prototype.forEach.call(repeatEl.children, function (child) {
+      var t = (child.getAttribute('data-figma-repeat-type') || '').trim().toLowerCase();
+      if (t) variants[t] = child;
+    });
+    if (Object.keys(variants).length === 0) return false;
+
+    Object.keys(variants).forEach(function (t) { variants[t] = variants[t].cloneNode(true); });
+    repeatEl.innerHTML = '';
+    blocks.forEach(function (block) {
+      var template = variants[block.type];
+      if (!template) return; // no variant authored for this block type - skip rather than guess
+      var clone = template.cloneNode(true);
+      clone.removeAttribute('data-figma-repeat-type');
+      var synthetic = {
+        title: block.text || '', titleRuns: block.runs || null, titleParts: null,
+        body: block.text || '', bodyRuns: block.runs || null, bodyParts: null,
+        image: block.image || { present: false, width: 0, height: 0 }
+      };
+      fillSlotsWithin(clone, synthetic, allowedSizes, collector);
+      repeatEl.appendChild(clone);
+    });
+    return true;
+  }
+
   function applyTemplate(templateHtml, data, allowedSizes) {
     var doc = new DOMParser().parseFromString(templateHtml, 'text/html');
     var collector = createStyleCollector();
@@ -388,6 +422,13 @@
     repeatEls.forEach(function (repeatEl, idx) {
       var attr = (repeatEl.getAttribute('data-figma-repeat') || '').trim().toLowerCase();
       var key = attr || (usePositionalFallback ? repeatKeys[idx] : '');
+
+      // A container authored with data-figma-repeat-type variant children
+      // (see fillBlockSequence) is a free-form ordered text/image sequence,
+      // not a fixed title+body+image item list - handled separately.
+      var blocks = data.repeatBlocks ? data.repeatBlocks[key] : undefined;
+      if (blocks && fillBlockSequence(repeatEl, blocks, allowedSizes, collector)) return;
+
       var items = data.repeats ? data.repeats[key] : undefined;
 
       // No matching Figma group for this slot: leave the authored markup
