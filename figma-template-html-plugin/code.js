@@ -161,11 +161,20 @@ function findAllNamedSlots(root, keywords, excludeIds) {
 // wrapper is enough - you don't have to name the text layer(s) themselves,
 // and a title/body split across multiple text layers is still captured
 // in full rather than just the first one found.
-function allTextDescendants(node) {
+//
+// `excludeIds` skips any DESCENDANT already claimed by a different role
+// match (e.g. a wrapper named "메뉴 설명" matches Body via "설명", but its
+// "타이틀" child was already claimed as the item's title - without this,
+// resolving the wrapper's combined text would pull the title text back in
+// too). The root `node` itself is never skipped even if its own id is in
+// the list, since it was deliberately passed in to be resolved.
+function allTextDescendants(node, excludeIds) {
+  excludeIds = excludeIds || [];
   var result = [];
   var queue = [node];
   while (queue.length > 0) {
     var current = queue.shift();
+    if (current !== node && excludeIds.indexOf(current.id) !== -1) continue;
     if (current.type === "TEXT") {
       result.push(current);
       continue;
@@ -242,11 +251,11 @@ function textRuns(textNode) {
 // "소제목", "대제목") - so the HTML side can address them as two separate
 // elements ("title:혜택.소제목" / "title:혜택.대제목") when the combined
 // single-element text isn't what's wanted, without any extra Figma naming.
-function combinedTextAndRuns(node) {
+function combinedTextAndRuns(node, excludeIds) {
   if (!node) return { text: "", runs: null, parts: null };
   if (node.type === "TEXT") return { text: node.characters, runs: textRuns(node), parts: null };
 
-  var textNodes = allTextDescendants(node);
+  var textNodes = allTextDescendants(node, excludeIds);
   if (textNodes.length === 0) return { text: "", runs: null, parts: null };
   if (textNodes.length === 1) {
     return { text: textNodes[0].characters, runs: textRuns(textNodes[0]), parts: null };
@@ -302,8 +311,8 @@ function extractItem(itemNode) {
     imageNode = itemNode;
   }
 
-  var titleResolved = combinedTextAndRuns(titleNode);
-  var bodyResolved = combinedTextAndRuns(bodyNode);
+  var titleResolved = combinedTextAndRuns(titleNode, exclude);
+  var bodyResolved = combinedTextAndRuns(bodyNode, exclude);
 
   console.log(
     "[code] item '" + itemNode.name + "':",
@@ -396,10 +405,15 @@ function extractTemplateData(root) {
     var bodySlots = findAllNamedSlots(scopeNode, BODY_KEYWORDS, exclude);
     exclude = exclude.concat(bodySlots.map(function (s) { return s.node.id; }));
     var imageSlots = findAllNamedSlots(scopeNode, IMAGE_KEYWORDS, exclude);
+    // Used only when RESOLVING each match's text below (never for the slot
+    // searches above) - stops a wrapper like "메뉴 설명" (matched as Body
+    // via "설명") from pulling in a sibling "타이틀" text that's already
+    // been claimed as this item's title.
+    var resolveExclude = exclude.concat(imageSlots.map(function (s) { return s.node.id; }));
 
     titleSlots.forEach(function (s) {
       var key = s.key || defaultKey;
-      var resolved = combinedTextAndRuns(s.node);
+      var resolved = combinedTextAndRuns(s.node, resolveExclude);
       var slot = ensureSlot(key);
       if (slot.foundTitle) {
         console.log(
@@ -418,7 +432,7 @@ function extractTemplateData(root) {
     });
     bodySlots.forEach(function (s) {
       var key = s.key || defaultKey;
-      var resolved = combinedTextAndRuns(s.node);
+      var resolved = combinedTextAndRuns(s.node, resolveExclude);
       var slot = ensureSlot(key);
       if (slot.foundBody) {
         console.log(
