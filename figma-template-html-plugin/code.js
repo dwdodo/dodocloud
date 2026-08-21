@@ -231,6 +231,13 @@ function firstSolidColor(fills) {
 // (rather than typed "•" by hand) are invisible to data-figma-format="blocks"
 // and come out as plain unmarked lines.
 //
+// A single styled segment can span MULTIPLE list lines at once (Figma
+// merges consecutive list items into one segment when they share the same
+// size/fill/list type, rather than one segment per line) - so the marker
+// has to be added to every line WITHIN a segment's characters, not just
+// once at the segment's start, or only the first line of a multi-line
+// list ends up marked and the rest silently fall back to plain text.
+//
 // Falls back to the node's raw `characters` (with no per-run styling) if
 // the API call fails for any reason.
 function textAndRunsWithLists(textNode) {
@@ -245,18 +252,27 @@ function textAndRunsWithLists(textNode) {
   var orderedCount = 0;
   var runs = segments.map(function (seg) {
     var listType = seg.listOptions && seg.listOptions.type;
-    var marker = "";
-    if (listType === "ORDERED") {
-      orderedCount += 1;
-      marker = orderedCount + ". ";
-    } else if (listType === "UNORDERED") {
-      orderedCount = 0;
-      marker = "• ";
+    var text = seg.characters;
+
+    if (listType === "ORDERED" || listType === "UNORDERED") {
+      var lines = text.split("\n");
+      var lastIdx = lines.length - 1;
+      lines = lines.map(function (line, idx) {
+        // A trailing "" from a segment ending in \n isn't a real list line.
+        if (line === "" && idx === lastIdx) return line;
+        if (listType === "ORDERED") {
+          orderedCount += 1;
+          return orderedCount + ". " + line;
+        }
+        return "• " + line;
+      });
+      text = lines.join("\n");
     } else {
       orderedCount = 0;
     }
+
     return {
-      text: marker + seg.characters,
+      text: text,
       fontSize: typeof seg.fontSize === "number" ? seg.fontSize : null,
       color: firstSolidColor(seg.fills)
     };
