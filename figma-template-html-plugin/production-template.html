@@ -1,0 +1,78 @@
+<!--
+  이 파일의 CSS(.page, .benefit-list, .menu-item 등)는 카페24 쪽 "껍데기" 페이지에서
+  이미 정의되어 있으므로, 여기서는 <style> 블록을 넣지 않습니다. 클래스 이름만 그 껍데기
+  CSS와 맞춰서 그대로 사용합니다.
+
+  플러그인이 상단에 자동으로 넣는 <style> 블록(.fx-1, .fx-2, ...)은 이것과 다른 것으로,
+  Figma 텍스트 레이어 안에서 실제로 부분적으로 다르게 준 글자 크기/색상만 담습니다 —
+  이건 이 파일에 미리 정해둘 수 없는, 변환마다 달라지는 값이라 그대로 유지합니다.
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>Club Movement Benefit</title>
+</head>
+<body>
+  <div class="page">
+
+    <!-- 혜택 섹션: Figma 최상위 프레임 이름 "혜택" -->
+    <section class="section">
+      <div class="titWrap">
+        <h4 data-figma-slot="title:혜택.소제목"></h4>
+        <h2 data-figma-slot="title:혜택.대제목"></h2>
+      </div>
+
+      <!-- Figma 레이어 "Repeat- 혜택리스트" -->
+      <div class="benefit-list" data-figma-repeat="혜택리스트">
+        <div class="benefit-item">
+          <div data-figma-slot="title"></div>
+          <div data-figma-slot="body"></div>
+        </div>
+      </div>
+
+      <!-- Figma 레이어 "Repeat- 안내사항리스트" -->
+      <div class="notice-list" data-figma-repeat="안내사항리스트">
+        <div class="notice-item">
+          <strong data-figma-slot="title"></strong>
+          <div data-figma-slot="body"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 소개 섹션: Figma 최상위 프레임 이름 "소개" -->
+    <section class="section">
+      <div class="titWrap">
+        <h4 data-figma-slot="title:소개.소제목"></h4>
+        <h2 data-figma-slot="title:소개.대제목"></h2>
+      </div>
+
+      <!-- Figma 레이어 "Repeat-그룹": 텍스트/이미지가 순서 상관없이 자유롭게 섞여 있음 -->
+      <div data-figma-repeat="그룹">
+        <p   class="about-text"  data-figma-repeat-type="text"  data-figma-slot="body"></p>
+        <img class="about-image" data-figma-repeat-type="image" data-figma-slot="image" src="" alt="" />
+      </div>
+    </section>
+
+    <!-- 메뉴 섹션: Figma 최상위 프레임 이름 "메뉴" -->
+    <section class="section">
+      <div class="titWrap">
+        <h4 data-figma-slot="title:메뉴.소제목"></h4>
+        <h2 data-figma-slot="title:메뉴.대제목"></h2>
+      </div>
+
+      <!-- Figma 레이어 "Repeat- 메뉴리스트" -->
+      <div data-figma-repeat="메뉴리스트">
+        <div class="menu-item">
+          <img data-figma-slot="image" src="" alt="" />
+          <div class="menu-info">
+            <h3 data-figma-slot="title"></h3>
+            <div data-figma-slot="body" data-figma-format="blocks"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</body>
+</html>

@@ -16,22 +16,21 @@
   }
   /* min-height (not a fixed height) lets the panel grow taller than the
      window and scroll naturally, instead of squeezing #results down to
-     zero height when the hint text + inputs don't all fit at once. */
+     zero height when the guide text doesn't fit at once. */
   .wrap { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 100vh; }
-  #results { min-height: 120px; }
   h2 { font-size: 13px; margin: 0 0 2px; }
-  p.hint { margin: 0; color: #666; line-height: 1.5; }
-  code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; }
-  textarea {
-    width: 100%;
-    font-family: "SF Mono", Menlo, monospace;
-    font-size: 11px;
-    resize: vertical;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    padding: 8px;
+  .guide {
+    background: #f8f8f8;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #444;
+    line-height: 1.6;
   }
-  #template-input { height: 150px; }
+  .guide ol { margin: 0; padding-left: 18px; }
+  .guide .note { margin: 8px 0 0; color: #999; font-size: 11px; }
+  .file-link { font-size: 11px; }
+  .file-link a { color: #18a0fb; text-decoration: none; }
+  .file-link a:hover { text-decoration: underline; }
   .row { display: flex; gap: 8px; }
   button {
     border: none;
@@ -44,24 +43,23 @@
   button.primary:hover { background: #0d8ee0; }
   button.secondary { background: #f0f0f0; color: #333; }
   button.secondary:hover { background: #e4e4e4; }
-  #results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  #results { flex: 1; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
   .card {
     border: 1px solid #e5e5e5;
     border-radius: 8px;
     padding: 8px;
   }
-  .card h3 { font-size: 12px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; }
-  .badges { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
-  .badge {
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 10px;
-    background: #eee;
-    color: #666;
+  .card h3 { font-size: 12px; margin: 0 0 6px; }
+  textarea.output {
+    width: 100%;
+    height: 160px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    resize: vertical;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 8px;
   }
-  .badge.ok { background: #e3f6e6; color: #1a7f3c; }
-  .badge.miss { background: #fdeaea; color: #c53030; }
-  .output { height: 90px; }
   .error { color: #c53030; }
   .empty { color: #999; text-align: center; padding: 24px 8px; }
 </style>
@@ -70,34 +68,22 @@
 <div class="wrap">
   <div>
     <h2>Template → HTML</h2>
-    <p class="hint">
-      Figma에서 <b>Title / Body / (반복 가능한) 카드 그룹 / 이미지 자리</b>를 포함한 프레임을 선택한 뒤,
-      아래 HTML 틀을 채우고 "Figma에서 변환하기"를 누르세요.<br />
-      · 레이어 이름에 <code>title</code>/<code>body</code>(<code>content</code>)/<code>image</code>가 포함되면 자동 인식됩니다.<br />
-      · <code>Items</code>, <code>List</code> 같은 그룹 레이어는 "반복 그룹"으로 인식되고 그 안의 자식 레이어
-      개수만큼(마케팅팀이 복제/삭제한 그대로) HTML도 반복 생성됩니다. 템플릿 하나에 <b>여러 개의 반복 그룹</b>이
-      있다면 <code>Repeat: Benefits</code>, <code>Repeat: Steps</code>처럼 이름을 지어 구분하세요
-      (HTML 쪽은 <code>data-figma-repeat="benefits"</code>).<br />
-      · 이미지는 실제 파일로 변환되지 않고 <b>"이미지 자리입니다" 자리표시(placeholder)</b>만 채워집니다.
-      완성된 HTML을 다른 에디터(예: 카페24)에 붙여넣은 뒤 그 자리에 이미지를 직접 넣으세요.<br />
-      · Title/Body 텍스트 안에서 부분적으로 크기·색을 다르게 준 경우, <b>색상은 Figma 값 그대로</b> 적용되고
-      <b>크기는 아래 목록 중 가장 가까운 값으로</b> 맞춰집니다.
+    <div class="guide">
+      <ol>
+        <li>선택한 템플릿을 코드로 변환합니다.</li>
+        <li>레이어 명, 컬러 등 slot 외 임의 변경 시 코드가 제대로 작동하지 않을 수 있습니다.</li>
+        <li>이미지는 임시 자리만 표시되고 실제로 변환되지 않습니다. (카페24 에디터를 통해 이미지 직접 교체)</li>
+        <li>복사 버튼을 눌러 카페24 상품에 붙여 넣으세요!</li>
+      </ol>
+      <p class="note">*파일 이상 시 디자인팀 요청</p>
+    </div>
+    <p class="file-link">
+      <a href="https://github.com/dwdodo/dodocloud/blob/claude/figma-template-html-plugin-fnaurc/figma-template-html-plugin/production-template.html" target="_blank" rel="noopener">템플릿 코드 보러가기 ↗</a>
     </p>
   </div>
 
-  <div>
-    <label for="allowed-sizes" style="display:block; margin-bottom:4px; color:#666;">
-      허용할 폰트 크기(px, 쉼표로 구분 — Figma 크기는 이 중 가장 가까운 값으로 맞춰집니다)
-    </label>
-    <input id="allowed-sizes" type="text" value="14,16,20,24,32,40"
-      style="width:100%; padding:6px 8px; border:1px solid #ddd; border-radius:6px; font-size:11px;" />
-  </div>
-
-  <textarea id="template-input" spellcheck="false"></textarea>
-
   <div class="row">
-    <button class="primary" id="convert-btn">Figma에서 변환하기</button>
-    <button class="secondary" id="reset-btn">예시로 초기화</button>
+    <button class="primary" id="convert-btn">변환하기</button>
   </div>
 
   <div id="results">
@@ -106,83 +92,107 @@
 </div>
 
 <script>
+  // The HTML structure marketing converts into. Fixed/baked-in rather than
+  // editable in this UI - if the page structure itself needs to change,
+  // that's a design/dev task (edit this constant + production-template.html
+  // in the repo, which the "템플릿 코드 보러가기" link above points to).
+  //
+  // Deliberately has NO <style> block: the CSS for .page/.benefit-list/
+  // .menu-item/etc. already lives in Cafe24's own shell page around this
+  // content, so embedding it here would just be redundant/conflicting.
+  // The only <style> this plugin ever injects is the dynamic .fx-N block
+  // (see styleBlockFor) for actual per-run text customization pulled from
+  // Figma - that can't be known ahead of time, so it isn't static CSS.
   var DEFAULT_TEMPLATE = [
     '<!DOCTYPE html>',
     '<html lang="ko">',
     '<head>',
     '<meta charset="UTF-8" />',
-    '<title>Template</title>',
-    '<style>',
-    '  .card { max-width: 480px; font-family: sans-serif; }',
-    '  .card img { width: 100%; height: auto; display: block; border-radius: 8px; }',
-    '  .card h1 { font-size: 22px; margin: 16px 0 8px; }',
-    '  .card .body { font-size: 14px; line-height: 1.6; color: #333; }',
-    '  .items { display: flex; gap: 12px; margin-top: 20px; }',
-    '  .item { flex: 1; }',
-    '  .item h3 { font-size: 15px; margin: 8px 0 4px; }',
-    '  .item p { font-size: 13px; color: #555; margin: 0; }',
-    '  .steps { margin-top: 16px; padding-left: 20px; }',
-    '  .steps h4 { font-size: 14px; margin: 0 0 2px; }',
-    '  .steps p { font-size: 13px; color: #555; margin: 0 0 10px; }',
-    '</style>',
+    '<title>Club Movement Benefit</title>',
     '</head>',
     '<body>',
-    '  <div class="card">',
-    '    <img data-figma-slot="image" src="" alt="" />',
-    '    <h1 data-figma-slot="title"></h1>',
-    '    <div class="body" data-figma-slot="body"></div>',
+    '  <div class="page">',
     '',
-    '    <!-- 반복 그룹 1: Figma 레이어 이름 "Repeat: Benefits" 와 매칭 -->',
-    '    <div class="items" data-figma-repeat="benefits">',
-    '      <div class="item">',
-    '        <img class="item-image" data-figma-slot="image" src="" alt="" />',
-    '        <h3 data-figma-slot="title"></h3>',
-    '        <p data-figma-slot="body"></p>',
+    '    <!-- 혜택 섹션: Figma 최상위 프레임 이름 "혜택" -->',
+    '    <section class="section">',
+    '      <div class="titWrap">',
+    '        <h4 data-figma-slot="title:혜택.소제목"></h4>',
+    '        <h2 data-figma-slot="title:혜택.대제목"></h2>',
     '      </div>',
-    '    </div>',
     '',
-    '    <!-- 반복 그룹 2: Figma 레이어 이름 "Repeat: Steps" 와 매칭 -->',
-    '    <ol class="steps" data-figma-repeat="steps">',
-    '      <li>',
-    '        <h4 data-figma-slot="title"></h4>',
-    '        <p data-figma-slot="body"></p>',
-    '      </li>',
-    '    </ol>',
+    '      <!-- Figma 레이어 "Repeat- 혜택리스트" -->',
+    '      <div class="benefit-list" data-figma-repeat="혜택리스트">',
+    '        <div class="benefit-item">',
+    '          <div data-figma-slot="title"></div>',
+    '          <div data-figma-slot="body"></div>',
+    '        </div>',
+    '      </div>',
+    '',
+    '      <!-- Figma 레이어 "Repeat- 안내사항리스트" -->',
+    '      <div class="notice-list" data-figma-repeat="안내사항리스트">',
+    '        <div class="notice-item">',
+    '          <strong data-figma-slot="title"></strong>',
+    '          <div data-figma-slot="body"></div>',
+    '        </div>',
+    '      </div>',
+    '    </section>',
+    '',
+    '    <!-- 소개 섹션: Figma 최상위 프레임 이름 "소개" -->',
+    '    <section class="section">',
+    '      <div class="titWrap">',
+    '        <h4 data-figma-slot="title:소개.소제목"></h4>',
+    '        <h2 data-figma-slot="title:소개.대제목"></h2>',
+    '      </div>',
+    '',
+    '      <!-- Figma 레이어 "Repeat-그룹": 텍스트/이미지가 순서 상관없이 자유롭게 섞여 있음 -->',
+    '      <div data-figma-repeat="그룹">',
+    '        <p   class="about-text"  data-figma-repeat-type="text"  data-figma-slot="body"></p>',
+    '        <img class="about-image" data-figma-repeat-type="image" data-figma-slot="image" src="" alt="" />',
+    '      </div>',
+    '    </section>',
+    '',
+    '    <!-- 메뉴 섹션: Figma 최상위 프레임 이름 "메뉴" -->',
+    '    <section class="section">',
+    '      <div class="titWrap">',
+    '        <h4 data-figma-slot="title:메뉴.소제목"></h4>',
+    '        <h2 data-figma-slot="title:메뉴.대제목"></h2>',
+    '      </div>',
+    '',
+    '      <!-- Figma 레이어 "Repeat- 메뉴리스트" -->',
+    '      <div data-figma-repeat="메뉴리스트">',
+    '        <div class="menu-item">',
+    '          <img data-figma-slot="image" src="" alt="" />',
+    '          <div class="menu-info">',
+    '            <h3 data-figma-slot="title"></h3>',
+    '            <div data-figma-slot="body" data-figma-format="blocks"></div>',
+    '          </div>',
+    '        </div>',
+    '      </div>',
+    '    </section>',
+    '',
     '  </div>',
     '</body>',
     '</html>'
   ].join('\n');
 
-  var templateInput = document.getElementById('template-input');
+  // Figma font sizes always snap to the nearest value in this list, so
+  // output text only ever uses an approved size. Edit here (and note the
+  // change in the repo's README) if the design system's scale changes.
+  var ALLOWED_SIZES = [14, 16, 20, 24, 32, 40];
+
   var resultsEl = document.getElementById('results');
   var emptyMsg = document.getElementById('empty-msg');
-
-  templateInput.value = DEFAULT_TEMPLATE;
-
-  document.getElementById('reset-btn').addEventListener('click', function () {
-    templateInput.value = DEFAULT_TEMPLATE;
-  });
 
   document.getElementById('convert-btn').addEventListener('click', function () {
     console.log('[ui] convert button clicked, sending message to plugin');
     parent.postMessage({ pluginMessage: { type: 'convert' } }, '*');
   });
 
-  var allowedSizesInput = document.getElementById('allowed-sizes');
-
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-  }
-
-  function parseAllowedSizes(str) {
-    return String(str || '')
-      .split(',')
-      .map(function (s) { return parseFloat(s.trim()); })
-      .filter(function (n) { return !isNaN(n) && n > 0; })
-      .sort(function (a, b) { return a - b; });
   }
 
   // Snaps a raw Figma font size to whichever allowed size is numerically
@@ -333,8 +343,6 @@
     }
   }
 
-  // Fills title/body/image slots that live within `root` (inclusive of
-  // root itself, so a repeat-item template can be a single slot element
   // Parses a data-figma-slot value:
   //   "title"                bare - the main/default section
   //   "title:about"          named section "about"
@@ -494,10 +502,6 @@
     return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
   }
 
-  function badge(label, ok) {
-    return '<span class="badge ' + (ok ? 'ok' : 'miss') + '">' + label + (ok ? ' 인식됨' : ' 없음') + '</span>';
-  }
-
   function renderResults(results) {
     resultsEl.innerHTML = '';
     if (!results || results.length === 0) {
@@ -517,40 +521,11 @@
         return;
       }
 
-      var allowedSizes = parseAllowedSizes(allowedSizesInput.value);
-      var outputHtml = applyTemplate(templateInput.value, data, allowedSizes);
+      var outputHtml = applyTemplate(DEFAULT_TEMPLATE, data, ALLOWED_SIZES);
 
       var header = document.createElement('h3');
       header.textContent = data.name || ('레이어 ' + (idx + 1));
       card.appendChild(header);
-
-      var badges = document.createElement('div');
-      badges.className = 'badges';
-      var repeatBadges = data.foundRepeat
-        ? data.repeatKeys
-            .map(function (k) {
-              var count = data.repeats[k] ? data.repeats[k].length : 0;
-              return '<span class="badge ok">' + escapeHtml(k) + ' ' + count + '개</span>';
-            })
-            .join('')
-        : '<span class="badge miss">반복 그룹 없음</span>';
-
-      var namedSectionKeys = (data.slotKeys || []).filter(function (k) { return k !== ''; });
-      var sectionBadges = namedSectionKeys
-        .map(function (k) {
-          var s = data.slots[k];
-          var parts = [];
-          if (s.foundTitle) parts.push('T');
-          if (s.foundBody) parts.push('B');
-          if (s.foundImage) parts.push('I');
-          return '<span class="badge ok">' + escapeHtml(k) + ' (' + (parts.join('') || '-') + ')</span>';
-        })
-        .join('');
-
-      badges.innerHTML =
-        badge('Title', data.foundTitle) + badge('Body', data.foundBody) + badge('Image', data.foundImage) +
-        repeatBadges + sectionBadges;
-      card.appendChild(badges);
 
       var out = document.createElement('textarea');
       out.className = 'output';
@@ -581,22 +556,6 @@
         setTimeout(function () { copyBtn.textContent = '복사'; }, 1200);
       });
       row.appendChild(copyBtn);
-
-      var downloadBtn = document.createElement('button');
-      downloadBtn.className = 'secondary';
-      downloadBtn.textContent = '다운로드 (.html)';
-      downloadBtn.addEventListener('click', function () {
-        var blob = new Blob([outputHtml], { type: 'text/html' });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = (data.name || 'template').replace(/[^\w\-가-힣]+/g, '_') + '.html';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      });
-      row.appendChild(downloadBtn);
 
       card.appendChild(row);
       resultsEl.appendChild(card);
