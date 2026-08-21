@@ -221,23 +221,48 @@ function firstSolidColor(fills) {
 
 // Splits a text layer into style runs (each run = a stretch of characters
 // sharing the same font size + fill color), so mixed-size/mixed-color text
-// within a single Figma text layer survives the conversion. Returns null if
-// the node isn't a text node or the API call fails for any reason.
-function textRuns(textNode) {
-  if (!textNode || textNode.type !== "TEXT") return null;
+// within a single Figma text layer survives the conversion.
+//
+// Also converts Figma's own bullet/numbered list formatting (the "Lists"
+// toggle in the text properties panel) into literal "• " / "1. " markers.
+// Figma stores that as per-run `listOptions` metadata, NOT as characters
+// in the text itself - `node.characters` for a bulleted line has no bullet
+// character at all - so without this, list items typed via that toggle
+// (rather than typed "•" by hand) are invisible to data-figma-format="blocks"
+// and come out as plain unmarked lines.
+//
+// Falls back to the node's raw `characters` (with no per-run styling) if
+// the API call fails for any reason.
+function textAndRunsWithLists(textNode) {
+  if (!textNode || textNode.type !== "TEXT") return { text: "", runs: null };
   var segments;
   try {
-    segments = textNode.getStyledTextSegments(["fontSize", "fills"]);
+    segments = textNode.getStyledTextSegments(["fontSize", "fills", "listOptions"]);
   } catch (e) {
-    return null;
+    return { text: textNode.characters, runs: null };
   }
-  return segments.map(function (seg) {
+
+  var orderedCount = 0;
+  var runs = segments.map(function (seg) {
+    var listType = seg.listOptions && seg.listOptions.type;
+    var marker = "";
+    if (listType === "ORDERED") {
+      orderedCount += 1;
+      marker = orderedCount + ". ";
+    } else if (listType === "UNORDERED") {
+      orderedCount = 0;
+      marker = "• ";
+    } else {
+      orderedCount = 0;
+    }
     return {
-      text: seg.characters,
+      text: marker + seg.characters,
       fontSize: typeof seg.fontSize === "number" ? seg.fontSize : null,
       color: firstSolidColor(seg.fills)
     };
   });
+
+  return { text: runs.map(function (r) { return r.text; }).join(""), runs: runs };
 }
 
 // Resolves a matched title/body node down to its actual text content: the
@@ -253,29 +278,33 @@ function textRuns(textNode) {
 // single-element text isn't what's wanted, without any extra Figma naming.
 function combinedTextAndRuns(node, excludeIds) {
   if (!node) return { text: "", runs: null, parts: null };
-  if (node.type === "TEXT") return { text: node.characters, runs: textRuns(node), parts: null };
+  if (node.type === "TEXT") {
+    var single = textAndRunsWithLists(node);
+    return { text: single.text, runs: single.runs, parts: null };
+  }
 
   var textNodes = allTextDescendants(node, excludeIds);
   if (textNodes.length === 0) return { text: "", runs: null, parts: null };
   if (textNodes.length === 1) {
-    return { text: textNodes[0].characters, runs: textRuns(textNodes[0]), parts: null };
+    var only = textAndRunsWithLists(textNodes[0]);
+    return { text: only.text, runs: only.runs, parts: null };
   }
 
   var parts = {};
   textNodes.forEach(function (tn) {
     var partKey = (tn.name || "").trim().toLowerCase();
-    if (partKey) parts[partKey] = { text: tn.characters, runs: textRuns(tn) };
+    if (partKey) parts[partKey] = textAndRunsWithLists(tn);
   });
 
   var texts = [];
   var runs = [];
   textNodes.forEach(function (tn, idx) {
-    texts.push(tn.characters);
-    var tnRuns = textRuns(tn);
-    if (tnRuns) {
-      runs = runs.concat(tnRuns);
-    } else if (tn.characters) {
-      runs.push({ text: tn.characters, fontSize: null, color: null });
+    var resolved = textAndRunsWithLists(tn);
+    texts.push(resolved.text);
+    if (resolved.runs) {
+      runs = runs.concat(resolved.runs);
+    } else if (resolved.text) {
+      runs.push({ text: resolved.text, fontSize: null, color: null });
     }
     if (idx < textNodes.length - 1) runs.push({ text: "\n", fontSize: null, color: null });
   });
@@ -285,9 +314,10 @@ function combinedTextAndRuns(node, excludeIds) {
 // Extracts title/body/image for a single item inside a repeat group.
 function extractItem(itemNode) {
   if (itemNode.type === "TEXT") {
+    var itemText = textAndRunsWithLists(itemNode);
     return {
-      title: itemNode.characters,
-      titleRuns: textRuns(itemNode),
+      title: itemText.text,
+      titleRuns: itemText.runs,
       titleParts: null,
       body: "",
       bodyRuns: null,
@@ -340,7 +370,8 @@ function extractItem(itemNode) {
 // layers in Figma reorders/duplicates blocks in the output the same way.
 function classifyBlock(node) {
   if (node.type === "TEXT") {
-    return { type: "text", text: node.characters, runs: textRuns(node) };
+    var nodeText = textAndRunsWithLists(node);
+    return { type: "text", text: nodeText.text, runs: nodeText.runs };
   }
 
   var textNodes = allTextDescendants(node);
