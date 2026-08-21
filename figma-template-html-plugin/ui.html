@@ -246,11 +246,70 @@
       .join('');
   }
 
+  // Splits raw text (as typed into ONE Figma text layer, no extra layers
+  // needed) into blocks: a plain paragraph, or a "heading + bullet list"
+  // block when a line with no bullet marker is immediately followed by
+  // one or more lines that all start with a bullet marker. Blocks are
+  // separated by blank lines. Lets a single body layer contain a main
+  // paragraph plus optional labelled bullet lists (e.g. "Tip" / "안내사항")
+  // and still come out as real <ul><li> structure instead of flat text.
+  var BULLET_RE = /^\s*[•\-\*·]\s*/;
+  function parseTextBlocks(text) {
+    var lines = String(text || '').split('\n');
+    var blocks = [];
+    var i = 0;
+    while (i < lines.length) {
+      while (i < lines.length && lines[i].trim() === '') i++;
+      if (i >= lines.length) break;
+
+      var blockLines = [];
+      while (i < lines.length && lines[i].trim() !== '') {
+        blockLines.push(lines[i]);
+        i++;
+      }
+
+      var firstIsBullet = BULLET_RE.test(blockLines[0]);
+      var restLines = blockLines.slice(firstIsBullet ? 0 : 1);
+      var restAreBullets = restLines.length > 0 && restLines.every(function (l) { return BULLET_RE.test(l); });
+
+      if (restAreBullets) {
+        blocks.push({
+          type: 'list',
+          heading: firstIsBullet ? null : blockLines[0].trim(),
+          items: restLines.map(function (l) { return l.replace(BULLET_RE, '').trim(); })
+        });
+      } else {
+        blocks.push({ type: 'paragraph', lines: blockLines });
+      }
+    }
+    return blocks;
+  }
+
+  function textBlocksToHtml(blocks) {
+    return blocks
+      .map(function (b) {
+        if (b.type === 'list') {
+          var heading = b.heading ? '<strong class="fx-block-heading">' + escapeHtml(b.heading) + '</strong>' : '';
+          var items = b.items.map(function (it) { return '<li>' + escapeHtml(it) + '</li>'; }).join('');
+          return '<div class="fx-block">' + heading + '<ul>' + items + '</ul></div>';
+        }
+        return '<p class="fx-block">' + b.lines.map(escapeHtml).join('<br>') + '</p>';
+      })
+      .join('');
+  }
+
   // Fills a title/body slot from style runs when available, falling back
   // to the plain extracted string (e.g. if getStyledTextSegments failed).
-  // Either way, line breaks are preserved as <br>.
+  // Either way, line breaks are preserved as <br> - UNLESS the element
+  // carries data-figma-format="blocks", in which case the text is parsed
+  // into paragraphs/bullet-lists (see parseTextBlocks) instead; that mode
+  // is opt-in per element, so it never changes existing simple templates.
   function fillTextSlot(el, plainText, runs, allowedSizes, collector) {
     if (!el) return;
+    if (el.getAttribute && el.getAttribute('data-figma-format') === 'blocks') {
+      el.innerHTML = textBlocksToHtml(parseTextBlocks(plainText || ''));
+      return;
+    }
     if (runs && runs.length > 0) {
       el.innerHTML = runsToHtml(runs, allowedSizes, collector);
     } else {
