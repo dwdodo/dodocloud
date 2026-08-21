@@ -257,41 +257,69 @@
   }
 
   // Splits raw text (as typed into ONE Figma text layer, no extra layers
-  // needed) into blocks: a plain paragraph, or a "heading + bullet list"
-  // block when a line with no bullet marker is immediately followed by
-  // one or more lines that all start with a bullet marker. Blocks are
-  // separated by blank lines. Lets a single body layer contain a main
-  // paragraph plus optional labelled bullet lists (e.g. "Tip" / "안내사항")
-  // and still come out as real <ul><li> structure instead of flat text.
+  // needed) into blocks: a "heading + bullet list" block wherever a run of
+  // one-or-more bullet-marked lines appears (optionally preceded directly,
+  // with no blank line, by one heading line), and plain paragraph text
+  // everywhere else. Blank lines are NOT treated as paragraph separators -
+  // they stay inside the surrounding paragraph block and render as <br>
+  // (so a spacing blank line becomes a double <br>, matching what the user
+  // actually typed) - only a real bullet-list run gets pulled out as its
+  // own block. Lets a single body layer contain a main paragraph plus
+  // optional labelled bullet lists (e.g. "Tip" / "안내사항") and still come
+  // out as real <ul><li> structure instead of flat text.
   var BULLET_RE = /^\s*[•\-\*·]\s*/;
   function parseTextBlocks(text) {
     var lines = String(text || '').split('\n');
     var blocks = [];
+    var paraLines = [];
+
+    function flushParagraph() {
+      // Trim leading/trailing blank lines - those are just the gap next to
+      // a list block or the start/end of the text, not spacing the user
+      // meant to see. Blank lines BETWEEN real content lines are kept.
+      var start = 0;
+      var end = paraLines.length;
+      while (start < end && paraLines[start].trim() === '') start++;
+      while (end > start && paraLines[end - 1].trim() === '') end--;
+      var trimmed = paraLines.slice(start, end);
+      paraLines = [];
+      if (trimmed.length > 0) blocks.push({ type: 'paragraph', lines: trimmed });
+    }
+
+    function takeBulletRun(start) {
+      var items = [];
+      var j = start;
+      while (j < lines.length && lines[j].trim() !== '' && BULLET_RE.test(lines[j])) {
+        items.push(lines[j].replace(BULLET_RE, '').trim());
+        j++;
+      }
+      return { items: items, next: j };
+    }
+
     var i = 0;
     while (i < lines.length) {
-      while (i < lines.length && lines[i].trim() === '') i++;
-      if (i >= lines.length) break;
+      var line = lines[i];
 
-      var blockLines = [];
-      while (i < lines.length && lines[i].trim() !== '') {
-        blockLines.push(lines[i]);
-        i++;
+      if (line.trim() !== '' && BULLET_RE.test(line)) {
+        var bare = takeBulletRun(i);
+        flushParagraph();
+        blocks.push({ type: 'list', heading: null, items: bare.items });
+        i = bare.next;
+        continue;
       }
 
-      var firstIsBullet = BULLET_RE.test(blockLines[0]);
-      var restLines = blockLines.slice(firstIsBullet ? 0 : 1);
-      var restAreBullets = restLines.length > 0 && restLines.every(function (l) { return BULLET_RE.test(l); });
-
-      if (restAreBullets) {
-        blocks.push({
-          type: 'list',
-          heading: firstIsBullet ? null : blockLines[0].trim(),
-          items: restLines.map(function (l) { return l.replace(BULLET_RE, '').trim(); })
-        });
-      } else {
-        blocks.push({ type: 'paragraph', lines: blockLines });
+      if (line.trim() !== '' && i + 1 < lines.length && lines[i + 1].trim() !== '' && BULLET_RE.test(lines[i + 1])) {
+        var withHeading = takeBulletRun(i + 1);
+        flushParagraph();
+        blocks.push({ type: 'list', heading: line.trim(), items: withHeading.items });
+        i = withHeading.next;
+        continue;
       }
+
+      paraLines.push(line);
+      i++;
     }
+    flushParagraph();
     return blocks;
   }
 
